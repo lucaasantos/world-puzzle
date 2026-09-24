@@ -98,7 +98,8 @@ class AppController extends ChangeNotifier {
       ? null
       : WorldCoinService(online: online!, ads: ads);
   bool get isOnline => online != null;
-  bool get debugEconomyEnabled => kDebugMode && !isOnline;
+  bool get debugEconomyEnabled =>
+      kDebugMode && (!isOnline || online!.user['debugToolsEnabled'] == true);
 
   ProgressSnapshot _snapshot = const ProgressSnapshot();
   ProgressSnapshot get snapshot => _snapshot;
@@ -517,6 +518,11 @@ class AppController extends ChangeNotifier {
       throw StateError('Debug pack grants are disabled in production.');
     }
     if (quantity < 1 || PackCatalog.byId(packId) == null) return;
+    if (online != null) {
+      await online!.debugGrantPack(packId, quantity: quantity);
+      _applyOnline();
+      return;
+    }
     await _runStateMutation(() async {
       final current = packInventoryFor(packId);
       final packs = Map<String, PackInventoryEntry>.of(_snapshot.packInventory)

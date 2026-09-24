@@ -415,6 +415,11 @@ class OnlineGameService {
     return balance;
   }
 
+  Future<void> debugGrantPack(String packId, {int quantity = 1}) async {
+    await call('debugGrantPack', {'packType': packId, 'quantity': quantity});
+    await sync();
+  }
+
   Future<PackOpenOutcome> open(String type) async {
     String? instance = pendingPack;
     if (instance != null && packInstances[instance]?['packType'] != type) {

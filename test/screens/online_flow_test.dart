@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:puzzle_journey/app/app_controller.dart';
 import 'package:puzzle_journey/app/app_scope.dart';
 import 'package:puzzle_journey/core/theme/app_theme.dart';
+import 'package:puzzle_journey/models/card_pack.dart';
 import 'package:puzzle_journey/repositories/progress_repository.dart';
 import 'package:puzzle_journey/screens/home/home_screen.dart';
 import 'package:puzzle_journey/screens/online/player_screens.dart';
@@ -78,6 +79,7 @@ class FakeOnline extends OnlineGameService {
     resetsAt = 30000000;
   }
   bool unavailable = false, duplicate = false;
+  int debugPacksGranted = 0;
   Object? initializationError;
   @override
   Future<void> initialize() async {
@@ -102,6 +104,15 @@ class FakeOnline extends OnlineGameService {
     needsProfile = false;
     user['nickname'] = nickname;
     user['avatar'] = avatar;
+  }
+
+  @override
+  Future<void> debugGrantPack(String packId, {int quantity = 1}) async {
+    debugPacksGranted += quantity;
+    packs[packId] = PackInventoryEntry(
+      packId: packId,
+      quantity: (packs[packId]?.quantity ?? 0) + quantity,
+    );
   }
 }
 
@@ -175,6 +186,24 @@ void main() {
     expect(c.debugEconomyEnabled, false);
     await expectLater(c.debugGrantPack('world_pack'), throwsStateError);
     await expectLater(c.debugGrantCard('brazil_flag'), throwsStateError);
+    c.dispose();
+  });
+  testWidgets('enabled online account can generate test packs from profile', (
+    tester,
+  ) async {
+    final online = FakeOnline()..user['debugToolsEnabled'] = true;
+    final c = controller(online);
+    await c.initialize();
+    await tester.pumpWidget(host(c, const PlayerProfileScreen()));
+    await tester.pumpAndSettle();
+    expect(c.debugEconomyEnabled, true);
+    await tester.tap(find.byKey(const Key('profile_debug_packs_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '+1').first);
+    await tester.pumpAndSettle();
+    expect(online.debugPacksGranted, 1);
+    expect(c.packInventoryFor('world_pack').quantity, 1);
+    await tester.pumpWidget(const SizedBox());
     c.dispose();
   });
   testWidgets('missing configuration gates home without a fake login', (

@@ -246,6 +246,24 @@ export const openPack = callable(async(uid,data) => {
   });
 });
 
+export const debugGrantPack = callable(async(uid,data) => {
+  const packType=id(data.packType), quantity=data.quantity;
+  if(!packTypes.includes(packType) || !Number.isInteger(quantity) || quantity<1 || quantity>10) {
+    fail('invalid-argument','Pacote ou quantidade inválida.');
+  }
+  const user=requireUser(await userRef(uid).get());
+  if(user.debugToolsEnabled!==true) {
+    fail('permission-denied','Ferramentas de teste não habilitadas para esta conta.');
+  }
+  const batch=db.batch(), now=Date.now();
+  for(let index=0;index<quantity;index++) {
+    const key=`debug_${now}_${randomUUID()}`;
+    batch.create(sub(uid,'packs',key),{packType,opened:false,earnedAt:now,debug:true});
+  }
+  await batch.commit();
+  return {packType,quantity};
+});
+
 export const pasteCard = callable(async(uid,data)=>{
   const card=id(data.cardId);
   if(!catalog.cards.some(c=>c.id===card)) fail('not-found','Carta inválida.');

@@ -11,6 +11,7 @@ import '../../data/game_modes_data.dart';
 import '../../data/packs_data.dart';
 import '../../services/online_game_service.dart';
 import '../../widgets/card_pack/pack_artwork.dart';
+import '../packs/debug_pack_sheet.dart';
 import '../packs/packs_screen.dart';
 
 bool isOnlineConnectionError(Object error) =>
@@ -665,6 +666,18 @@ class PlayerProfileScreen extends StatelessWidget {
             subtitle: Text('${album.pasted}/${album.total} cartas coladas'),
             trailing: Text('${(album.fraction * 100).toStringAsFixed(1)}%'),
           ),
+          if (controller.debugEconomyEnabled)
+            ListTile(
+              key: const Key('profile_debug_packs_button'),
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('Gerar pacotes de teste'),
+              subtitle: const Text('Ferramenta de debug desta conta'),
+              onTap: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => const DebugPackSheet(),
+              ),
+            ),
         ],
       ),
     );

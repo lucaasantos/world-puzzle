@@ -15,7 +15,8 @@ class _DebugPackSheetState extends State<DebugPackSheet> {
 
   @override
   Widget build(BuildContext context) {
-    if (!AppScope.of(context).debugEconomyEnabled) {
+    final controller = AppScope.of(context);
+    if (!controller.debugEconomyEnabled) {
       return const SizedBox.shrink();
     }
     return SafeArea(
@@ -31,7 +32,7 @@ class _DebugPackSheetState extends State<DebugPackSheet> {
             ),
             const SizedBox(height: 5),
             const Text(
-              'Disponível somente em builds de debug.',
+              'Disponível somente para esta conta em builds de debug.',
               style: TextStyle(color: Colors.white54),
             ),
             const SizedBox(height: 16),
@@ -53,17 +54,19 @@ class _DebugPackSheetState extends State<DebugPackSheet> {
                   ],
                 ),
               ),
-            const Divider(height: 26),
-            OutlinedButton.icon(
-              onPressed: working ? null : _openMany,
-              icon: const Icon(Icons.science_outlined),
-              label: const Text('Abrir 20 World Packs rapidamente'),
-            ),
-            TextButton.icon(
-              onPressed: working ? null : _reset,
-              icon: const Icon(Icons.delete_sweep_outlined),
-              label: const Text('Zerar inventário de pacotes'),
-            ),
+            if (!controller.isOnline) ...[
+              const Divider(height: 26),
+              OutlinedButton.icon(
+                onPressed: working ? null : _openMany,
+                icon: const Icon(Icons.science_outlined),
+                label: const Text('Abrir 20 World Packs rapidamente'),
+              ),
+              TextButton.icon(
+                onPressed: working ? null : _reset,
+                icon: const Icon(Icons.delete_sweep_outlined),
+                label: const Text('Zerar inventário de pacotes'),
+              ),
+            ],
             if (working) ...[
               const SizedBox(height: 10),
               const Center(child: CircularProgressIndicator()),
@@ -97,11 +100,19 @@ class _DebugPackSheetState extends State<DebugPackSheet> {
 
   Future<void> _run(Future<Object?> Function() action, String message) async {
     setState(() => working = true);
-    await action();
-    if (!mounted) return;
-    setState(() => working = false);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    try {
+      await action();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível gerar o pacote: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
   }
 }
