@@ -1,0 +1,68 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+/tmp/
+
+# Local device screenshots and UI diagnostics kept outside production assets.
+/*.png
+/puzzle_ui.xml
+/firestore-debug.log
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Internal artwork generation: never package credentials or review output.
+tools/card-image-generator/.env
+tools/card-image-generator/.env.*
+!tools/card-image-generator/.env.example
+tools/card-image-generator/.venv/
+tools/card-image-generator/data/*
+tools/card-image-generator/logs/*
+tools/card-image-generator/output/*
+__pycache__/
+
+# Firebase local state and environment-specific settings.
+functions/node_modules/
+.firebase/
+config/firebase.local.json
+functions/.env*
+!functions/.env.example

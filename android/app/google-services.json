@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "188944842485",
+    "project_id": "puzzle-world-a7b7d",
+    "storage_bucket": "puzzle-world-a7b7d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:188944842485:android:a070f48d46c83dd0bd8fbc",
+        "android_client_info": {
+          "package_name": "com.puzzlejourney.puzzle_journey"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0rECB763vapNYoOWyHEH0gGQ6uPOMTYI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

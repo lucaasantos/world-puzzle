@@ -1,0 +1,25 @@
+Create an original illustration for the following subject in Puzzle World.
+Subject: {name}
+Country: {country}
+Category: {category}
+Context: {description}
+
+Global visual direction: {artStyle}
+Subtle lighting direction: {rarityStyle}
+
+Artwork only. No card frame, border, title, rarity badge, text, lettering, numbers,
+logos, watermark, icons, interface, card layout, or decorative UI effects.
+Use a contextual background where appropriate. Keep the main subject visually
+clear and recognizable, with generous breathing room for center cropping. Vary
+subject placement, camera height, perspective, weather and lighting by location.
+Visual identity must come from this specific place, not a reusable postcard formula.
+Derive colors from local materials, landscape and the chosen time of day; do not
+reuse the same blue sky, golden light, pink flowers and yellow facades everywhere.
+For cities, depict a researched, recognizable local setting with credible spatial
+relationships. Avoid invented skylines and collages of unrelated landmarks.
+Do not automatically add volcanoes, lakes, churches or floral foreground framing.
+Keep the illustration technique coherent across the collection, not the scenery.
+The final artwork is {width} by {height} pixels. Keep key details in the central
+80 percent. Do not simulate a physical playing card. For flags or currency,
+depict the subject visually without lettering or denominations. Respect cultural
+and geographic context. All labels and frames are supplied separately by the game.

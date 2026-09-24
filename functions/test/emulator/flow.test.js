@@ -1,0 +1,104 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {initializeApp,deleteApp} from 'firebase-admin/app';
+import {getFirestore} from 'firebase-admin/firestore';
+import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
+import {doc,setDoc,getDoc} from 'firebase/firestore';
+
+if(!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('Run only through firebase emulators:exec');
+const projectId='demo-puzzle-world';
+const app=initializeApp({projectId}), db=getFirestore(app);
+let env;
+after(async()=>{await env?.cleanup();await deleteApp(app);});
+async function account(){
+  const response=await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
+  return response.json();
+}
+async function call(user,name,data={}){
+  const response=await fetch(`http://127.0.0.1:5001/${projectId}/southamerica-east1/${name}`,{method:'POST',headers:{'Content-Type':'application/json',...(user?{Authorization:`Bearer ${user.idToken}`}:{})},body:JSON.stringify({data})});
+  const json=await response.json();
+  if(json.error) throw Object.assign(new Error(json.error.message),{status:json.error.status});
+  return json.result;
+}
+test('online economy: auth, rules, concurrent completion/claim/open, duplicates, album, reset, lives',async()=>{
+  env=await initializeTestEnvironment({projectId,firestore:{rules:readFileSync(new URL('../../../firestore.rules',import.meta.url),'utf8')}});
+  await env.clearFirestore();
+  const a=await account(),b=await account();
+  await assert.rejects(call(null,'syncPlayer'),{status:'UNAUTHENTICATED'});
+  assert.equal((await call(a,'syncPlayer')).needsProfile,true);
+  await call(a,'createProfile',{nickname:'Explorer_One',avatar:'globe'});
+  await assert.rejects(call(b,'createProfile',{nickname:'explorer_one',avatar:'plane'}),{status:'ALREADY_EXISTS'});
+  await assert.rejects(call(b,'createProfile',{nickname:'../bad',avatar:'plane'}),{status:'INVALID_ARGUMENT'});
+  await call(b,'createProfile',{nickname:'Explorer_Two',avatar:'plane'});
+  const adb=env.authenticatedContext(a.localId).firestore(),bdb=env.authenticatedContext(b.localId).firestore();
+  await assertSucceeds(getDoc(doc(adb,`users/${a.localId}`)));
+  await assertFails(getDoc(doc(bdb,`users/${a.localId}`)));
+  for(const path of [`users/${a.localId}`,`users/${a.localId}/collection/fake`,`users/${a.localId}/packs/fake`,`users/${a.localId}/dailyExploration/fake`,`users/${a.localId}/weeklyStarProgress/fake`,`users/${a.localId}/rewards/fake`,`users/${a.localId}/attempts/fake`,`users/${a.localId}/economyTransactions/fake`,`profiles/${a.localId}`,`nicknames/fake`]) await assertFails(setDoc(doc(adb,path),{totalXp:999999,lives:99,worldCoins:999999}));
+  let state=await call(a,'syncPlayer');
+  assert.equal(state.user.worldCoins,0);assert.equal(state.user.worldCoinRewardAds.earnedToday,0);
+  const coinTicket=await call(a,'prepareWorldCoinAd');
+  assert.equal((await call(a,'syncPlayer')).user.worldCoins,0);
+  const coinReward=await call(a,'claimRewardedWorldCoin',{ticket:coinTicket.ticket});
+  assert.equal(coinReward.amount,1);assert.equal(coinReward.balance,1);assert.equal(coinReward.earnedToday,1);
+  assert.deepEqual(await call(a,'claimRewardedWorldCoin',{ticket:coinTicket.ticket}),coinReward);
+  assert.equal((await db.collection(`users/${a.localId}/economyTransactions`).get()).size,1);
+  const now=Date.now(),userRef=db.doc(`users/${a.localId}`);
+  await userRef.update({worldCoins:9,worldCoinRewardAds:{cycleId:state.daily.id,earnedToday:9},lastWorldCoinAdTicketAt:0});
+  for(const ticket of ['coin_race_a','coin_race_b']) await db.doc(`users/${a.localId}/adTickets/${ticket}`).set({kind:'world_coin',createdAt:now,expiresAt:now+3600000,redeemed:false,rewardAmount:1,cycleId:state.daily.id});
+  const raced=await Promise.allSettled(['coin_race_a','coin_race_b'].map(ticket=>call(a,'claimRewardedWorldCoin',{ticket})));
+  assert.equal(raced.filter(result=>result.status==='fulfilled').length,1);
+  state=await call(a,'syncPlayer');assert.equal(state.user.worldCoins,10);assert.equal(state.user.worldCoinRewardAds.earnedToday,10);
+  await assert.rejects(call(a,'prepareWorldCoinAd'),{status:'RESOURCE_EXHAUSTED'});
+  await userRef.update({worldCoinRewardAds:{cycleId:'2000-01-01',earnedToday:10},lastWorldCoinAdTicketAt:0});
+  assert.equal((await call(a,'prepareWorldCoinAd')).earnedToday,0);
+  const countries=['brazil','japan','egypt','greece'];
+  for(let i=0;i<4;i++){
+    const request={requestId:`attempt_${i}`,countryId:countries[i],levelId:`${countries[i]}_01`,difficulty:'easy',gameMode:'sliding'};
+    const [one,two]=await Promise.all([call(a,'startAttempt',request),call(a,'startAttempt',request)]);
+    assert.deepEqual(one.board,two.board);
+    await assert.rejects(call(b,'finishAttempt',{attemptId:one.id,moves:[8]}),{status:'NOT_FOUND'});
+    await assert.rejects(call(a,'finishAttempt',{attemptId:one.id,moves:[]}),{status:'INVALID_ARGUMENT'});
+    // Controlled puzzle fixture; production clients cannot write attempts (rules above).
+    await db.doc(`users/${a.localId}/attempts/${one.id}`).update({board:[0,1,2,3,4,5,6,8,7],startedAt:Date.now()-5000});
+    const completed=await Promise.all([call(a,'finishAttempt',{attemptId:one.id,moves:[8]}),call(a,'finishAttempt',{attemptId:one.id,moves:[8]})]);
+    assert.deepEqual(completed[0],completed[1]);
+    assert.equal(completed[0].dailyProgress,i+1);
+  }
+  state=await call(a,'syncPlayer');
+  assert.equal(state.user.totalXp,100);assert.equal(state.user.puzzlesCompleted,4);assert.equal(state.user.lives,0);
+  assert.equal(state.user.starDustBalance,12);assert.equal(state.weeklyStars.totalStars,12);assert.equal(state.weeklyStars.stagesCompleted,4);
+  const spent=await call(a,'spendStarDust',{requestId:'market_future_1',amount:5});assert.equal(spent.balance,7);
+  assert.equal((await call(a,'spendStarDust',{requestId:'market_future_1',amount:5})).balance,7);
+  await db.doc(`users/${a.localId}`).update({starDustBalance:99});
+  const dailyId=state.daily.id;
+  const claims=await Promise.all(Array.from({length:5},()=>call(a,'claimExploration',{dailyId})));
+  assert.ok(claims.every(r=>r.id===claims[0].id));assert.equal(claims[0].packType,'world_pack');
+  assert.equal((await db.collection(`users/${a.localId}/packs`).get()).size,1);
+  const opened=await Promise.all([call(a,'openPack',{packInstanceId:claims[0].id}),call(a,'openPack',{packInstanceId:claims[0].id})]);
+  assert.deepEqual(opened[0],opened[1]);assert.equal(opened[0].cards.length,4);
+  state=await call(a,'syncPlayer');assert.equal(state.user.cardsReceived,4);
+  const card=opened[0].cards[0].cardId,ref=db.doc(`users/${a.localId}/collection/${card}`);
+  await ref.update({quantity:3});
+  await Promise.all([call(a,'pasteCard',{cardId:card}),call(a,'pasteCard',{cardId:card})]);
+  assert.equal((await ref.get()).data().quantity,2);assert.equal((await ref.get()).data().pastedInAlbum,true);
+  await db.doc(`users/${a.localId}`).update({lifeAnchor:Date.now()-1801000});
+  assert.equal((await call(a,'syncPlayer')).user.lives,1);
+  await call(a,'startAttempt',{requestId:'last_life',countryId:'japan',levelId:'japan_02',difficulty:'easy',gameMode:'sliding'});
+  await db.doc(`users/${a.localId}/attempts/last_life`).update({board:[0,1,2,3,4,5,6,8,7],startedAt:Date.now()-5000});
+  await call(a,'finishAttempt',{attemptId:'last_life',moves:[8]});
+  state=await call(a,'syncPlayer');assert.equal(Object.keys(state.daily.countries).length,4);assert.equal(state.user.totalXp,125);assert.equal(state.user.starDustBalance,100);assert.equal(state.weeklyStars.totalStars,15);
+  await call(a,'claimExploration',{dailyId});assert.equal((await db.collection(`users/${a.localId}/packs`).get()).size,1);
+  await assert.rejects(call(a,'startAttempt',{requestId:'no_life',countryId:'japan',levelId:'japan_01',difficulty:'easy',gameMode:'sliding'}),{status:'RESOURCE_EXHAUSTED'});
+  const ticket=await call(a,'prepareLifeAd');assert.ok(ticket.ticket);
+  assert.equal((await call(a,'syncPlayer')).user.lives,0);
+  await assert.rejects(call(a,'prepareLifeAd'),{status:'RESOURCE_EXHAUSTED'});
+  await db.doc(`users/${a.localId}`).update({lifeAnchor:Date.now()-1801000});
+  assert.equal((await call(a,'syncPlayer')).user.lives,1);
+  // A completed previous day remains independently claimable after reset.
+  const old={...state.daily,id:'2026-01-01',claimed:false};
+  await db.doc(`users/${a.localId}/dailyExploration/2026-01-01`).set(old);
+  await call(a,'claimExploration',{dailyId:'2026-01-01'});
+  assert.equal((await db.collection(`users/${a.localId}/packs`).get()).size,2);
+  await assert.rejects(call(a,'claimExploration',{dailyId:'2099-01-01'}),{status:'FAILED_PRECONDITION'});
+});

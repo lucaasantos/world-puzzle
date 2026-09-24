@@ -1,0 +1,16 @@
+{
+  "artStyle": "Original stylized digital illustration; modern collectible mobile game artwork; polished painterly shapes; vibrant but balanced colors; clean visual hierarchy; recognizable main subject; coherent soft textures; detailed enough for small cards; not photorealistic.",
+  "rarity": {
+    "COMMON": "Simple composition and natural lighting.",
+    "RARE": "Slightly richer lighting and composition.",
+    "EPIC": "Subtly striking atmosphere and additional subject detail.",
+    "LEGENDARY": "Epic composition and dramatic lighting, without decorative effects."
+  },
+  "width": 1000,
+  "height": 1024,
+  "format": "WEBP",
+  "quality": 86,
+  "maxBytes": 650000,
+  "providerSize": "1024x1024",
+  "providerQuality": "medium"
+}
