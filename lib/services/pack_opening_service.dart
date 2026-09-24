@@ -15,7 +15,10 @@ class PackOpeningService {
     required Map<String, CardInventoryEntry> inventory,
   }) {
     final uniqueActiveCards = <String, CollectibleCard>{
-      for (final card in catalog.where((card) => card.isActive)) card.id: card,
+      for (final card in catalog.where(
+        (card) => card.isActive && !card.isPlaceholderImage,
+      ))
+        card.id: card,
     }.values.toList(growable: false);
     if (uniqueActiveCards.length < pack.cardCount) return null;
 

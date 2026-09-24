@@ -109,4 +109,43 @@ void main() {
     expect(byId[cards[2].id]!.isNew, isTrue);
     expect(byId[cards[2].id]!.resultingQuantity, 1);
   });
+
+  test('cards without approved artwork cannot be obtained from packs', () {
+    final service = PackOpeningService(random: math.Random(4));
+    final placeholder = collectibleCards.firstWhere(
+      (card) => card.isPlaceholderImage,
+    );
+    const pack = PackDefinition(
+      id: 'art_gate_test_pack',
+      name: 'Art gate',
+      description: 'Test',
+      cardCount: 1,
+      rarityWeights: {
+        CardRarity.common: 1,
+        CardRarity.rare: 1,
+        CardRarity.epic: 1,
+        CardRarity.legendary: 1,
+      },
+      isActive: true,
+      sourceType: PackSourceType.gameplay,
+      iconName: 'public',
+      sortOrder: 1,
+    );
+
+    expect(
+      service.generate(pack: pack, catalog: [placeholder], inventory: const {}),
+      isNull,
+    );
+
+    final result = service.generate(
+      pack: PackCatalog.byId(PackIds.legacy)!,
+      catalog: collectibleCards,
+      inventory: const {},
+    );
+    expect(result, isNotNull);
+    expect(
+      result!.cards.every((reward) => !reward.card.isPlaceholderImage),
+      isTrue,
+    );
+  });
 }

@@ -564,7 +564,13 @@ class AppController extends ChangeNotifier {
     if (!debugEconomyEnabled) {
       throw StateError('Debug card grants are disabled in production.');
     }
-    if (quantity < 1 || CardCatalog.cardById(cardId) == null) return;
+    final card = CardCatalog.cardById(cardId);
+    if (quantity < 1 ||
+        card == null ||
+        !card.isActive ||
+        card.isPlaceholderImage) {
+      return;
+    }
     await _runStateMutation(() async {
       final current = inventoryFor(cardId);
       final inventory = Map<String, CardInventoryEntry>.of(
@@ -585,7 +591,9 @@ class AppController extends ChangeNotifier {
       final inventory = Map<String, CardInventoryEntry>.of(
         _snapshot.cardInventory,
       );
-      for (final card in collectibleCards.where((card) => card.isActive)) {
+      for (final card in collectibleCards.where(
+        (card) => card.isActive && !card.isPlaceholderImage,
+      )) {
         final current =
             inventory[card.id] ?? CardInventoryEntry(cardId: card.id);
         inventory[card.id] = current.copyWith(

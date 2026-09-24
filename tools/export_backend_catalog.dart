@@ -9,7 +9,11 @@ import 'package:puzzle_journey/data/game_modes_data.dart';
 void main() {
   final data = {
     'cards': [
-      for (final c in collectibleCards.where((c) => c.isActive))
+      // Cards without approved artwork stay in the generation catalog, but
+      // cannot enter the live economy until their final art is applied.
+      for (final c in collectibleCards.where(
+        (c) => c.isActive && !c.isPlaceholderImage,
+      ))
         {
           'id': c.id,
           'countryId': c.countryId,
