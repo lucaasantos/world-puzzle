@@ -51,11 +51,10 @@ class _JigsawBoardState extends State<JigsawBoard> {
   }
 
   Offset _anchor(Draggable<Object> _, BuildContext __, Offset ___) {
-    final padding =
-        .24 *
-        (widget.boardLayout.pieceWidth < widget.boardLayout.pieceHeight
-            ? widget.boardLayout.pieceWidth
-            : widget.boardLayout.pieceHeight);
+    final padding = jigsawPiecePadding(
+      widget.boardLayout.pieceWidth,
+      widget.boardLayout.pieceHeight,
+    );
     return Offset(
       widget.boardLayout.pieceWidth * .5 + padding,
       widget.boardLayout.pieceHeight * .5 + padding,
@@ -80,11 +79,10 @@ class _JigsawBoardState extends State<JigsawBoard> {
     final oldY = piece.y;
     final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
-    final padding =
-        .24 *
-        (widget.boardLayout.pieceWidth < widget.boardLayout.pieceHeight
-            ? widget.boardLayout.pieceWidth
-            : widget.boardLayout.pieceHeight);
+    final padding = jigsawPiecePadding(
+      widget.boardLayout.pieceWidth,
+      widget.boardLayout.pieceHeight,
+    );
     final local = box.globalToLocal(details.offset) + Offset(padding, padding);
     final x = local.dx;
     final y = local.dy;
@@ -164,7 +162,10 @@ class _JigsawBoardState extends State<JigsawBoard> {
       widget.boardLayout.pieceWidth,
       widget.boardLayout.pieceHeight,
     );
-    final pad = widget.boardLayout.pieceWidth * .24;
+    final pad = jigsawPiecePadding(
+      widget.boardLayout.pieceWidth,
+      widget.boardLayout.pieceHeight,
+    );
     return Column(
       children: [
         Center(
@@ -177,8 +178,9 @@ class _JigsawBoardState extends State<JigsawBoard> {
               border: Border.all(color: const Color(0xFFFFD58A), width: 2),
               borderRadius: BorderRadius.circular(8),
             ),
+            clipBehavior: Clip.hardEdge,
             child: Stack(
-              clipBehavior: Clip.none,
+              clipBehavior: Clip.hardEdge,
               children: [
                 for (final id in _zOrder)
                   if (!widget.engine.pieces[id].isInTray)

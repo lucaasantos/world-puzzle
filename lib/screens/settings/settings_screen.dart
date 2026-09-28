@@ -61,11 +61,6 @@ class SettingsScreen extends StatelessWidget {
               ),
               ListTile(
                 enabled: false,
-                leading: Icon(Icons.restore_rounded),
-                title: Text('Restaurar progresso'),
-              ),
-              ListTile(
-                enabled: false,
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('Sobre'),
               ),

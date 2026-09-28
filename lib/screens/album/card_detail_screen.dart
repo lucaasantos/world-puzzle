@@ -21,6 +21,8 @@ class CardDetailScreen extends StatelessWidget {
     final inventory = controller.inventoryFor(card.id);
     final country = CardCatalog.countryById(card.countryId);
     final canPaste = inventory.quantity > 0 && !inventory.pastedInAlbum;
+    final usesPremiumLayout =
+        card.rarity == CardRarity.legendary || card.rarity == CardRarity.epic;
     final cardState = inventory.pastedInAlbum
         ? AlbumCardState.pasted
         : inventory.quantity > 0
@@ -45,31 +47,46 @@ class CardDetailScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      card.localizedName ?? card.name,
-                      style: const TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w900,
+          if (usesPremiumLayout) ...[
+            Text(
+              card.localizedName ?? card.name,
+              style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _AlbumStatus(pasted: inventory.pastedInAlbum),
+                _QuantityStatus(quantity: inventory.quantity),
+              ],
+            ),
+          ] else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        card.localizedName ?? card.name,
+                        style: const TextStyle(
+                          fontSize: 27,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '${country?.flag ?? ''} ${country?.name ?? card.countryId}',
-                      style: const TextStyle(color: AppTheme.textMuted),
-                    ),
-                  ],
+                      const SizedBox(height: 5),
+                      Text(
+                        '${country?.flag ?? ''} ${country?.name ?? card.countryId}',
+                        style: const TextStyle(color: AppTheme.textMuted),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              _AlbumStatus(pasted: inventory.pastedInAlbum),
-            ],
-          ),
+                _AlbumStatus(pasted: inventory.pastedInAlbum),
+              ],
+            ),
           const SizedBox(height: 18),
           Wrap(
             spacing: 8,
@@ -84,19 +101,22 @@ class CardDetailScreen extends StatelessWidget {
                 icon: Icons.category_outlined,
                 label: categoryLabel(card.category),
               ),
-              _InfoChip(
-                icon: Icons.style_rounded,
-                label: inventory.quantity == 1
-                    ? '1 cópia disponível'
-                    : '${inventory.quantity} cópias disponíveis',
-              ),
+              if (!usesPremiumLayout)
+                _InfoChip(
+                  icon: Icons.style_rounded,
+                  label: inventory.quantity == 1
+                      ? '1 cópia disponível'
+                      : '${inventory.quantity} cópias disponíveis',
+                ),
             ],
           ),
-          const SizedBox(height: 24),
-          Text(
-            card.description,
-            style: const TextStyle(color: Colors.white70, height: 1.55),
-          ),
+          if (!usesPremiumLayout) ...[
+            const SizedBox(height: 24),
+            Text(
+              card.description,
+              style: const TextStyle(color: Colors.white70, height: 1.55),
+            ),
+          ],
           const SizedBox(height: 28),
           if (canPaste)
             FilledButton.icon(
@@ -203,6 +223,31 @@ class _AlbumStatus extends StatelessWidget {
       pasted ? 'NO ÁLBUM' : 'NÃO COLADA',
       style: TextStyle(
         color: pasted ? AppTheme.primary : Colors.white54,
+        fontSize: 10,
+        fontWeight: FontWeight.w900,
+      ),
+    ),
+  );
+}
+
+class _QuantityStatus extends StatelessWidget {
+  const _QuantityStatus({required this.quantity});
+
+  final int quantity;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('legendary-external-quantity'),
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+    decoration: BoxDecoration(
+      color: AppTheme.primary.withValues(alpha: .10),
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: AppTheme.primary.withValues(alpha: .28)),
+    ),
+    child: Text(
+      quantity == 1 ? '1 CÓPIA' : '$quantity CÓPIAS',
+      style: const TextStyle(
+        color: AppTheme.primary,
         fontSize: 10,
         fontWeight: FontWeight.w900,
       ),

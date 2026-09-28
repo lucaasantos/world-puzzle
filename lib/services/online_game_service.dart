@@ -20,6 +20,34 @@ import '../models/card_pack.dart';
 import '../models/puzzle_progress.dart';
 import '../core/config/world_coin_config.dart';
 
+const _onlineConfigChannel = MethodChannel('puzzle_world/config');
+Map<String, String>? _nativeOnlineConfig;
+
+String _environmentOnlineConfig(String name) => switch (name) {
+  'FIREBASE_PROJECT_ID' => const String.fromEnvironment('FIREBASE_PROJECT_ID'),
+  'FIREBASE_API_KEY' => const String.fromEnvironment('FIREBASE_API_KEY'),
+  'FIREBASE_APP_ID' => const String.fromEnvironment('FIREBASE_APP_ID'),
+  'FIREBASE_SENDER_ID' => const String.fromEnvironment('FIREBASE_SENDER_ID'),
+  'PLAY_GAMES_WEB_CLIENT_ID' => const String.fromEnvironment(
+    'PLAY_GAMES_WEB_CLIENT_ID',
+  ),
+  _ => '',
+};
+
+Future<String> _onlineConfigValue(String name) async {
+  final environmentValue = _environmentOnlineConfig(name);
+  if (environmentValue.isNotEmpty || !Platform.isAndroid) {
+    return environmentValue;
+  }
+  _nativeOnlineConfig ??= Map<String, String>.from(
+    await _onlineConfigChannel.invokeMapMethod<String, String>(
+          'getOnlineConfig',
+        ) ??
+        const {},
+  );
+  return _nativeOnlineConfig![name] ?? '';
+}
+
 class OnlineSetupException implements Exception {
   const OnlineSetupException(this.message);
   final String message;
@@ -40,7 +68,7 @@ class PlayGamesIdentityProvider implements PlayerIdentityProvider {
         'O login desta plataforma ainda precisa ser configurado.',
       );
     }
-    const clientId = String.fromEnvironment('PLAY_GAMES_WEB_CLIENT_ID');
+    final clientId = await _onlineConfigValue('PLAY_GAMES_WEB_CLIENT_ID');
     if (clientId.isEmpty) {
       throw const OnlineSetupException(
         'O acesso ao Play Games ainda não foi configurado nesta versão.',
@@ -73,8 +101,17 @@ class OnlineGameService {
   List<int> attemptMoves = [];
   Map<String, dynamic>? pendingStart;
   String? pendingPack;
+  String? pendingOpeningId;
+  final List<Map<String, dynamic>> _pendingSyncOperations = [];
+  Timer? _pendingSyncRetryTimer;
+  Future<void> _pendingSyncDrain = Future.value();
   final Stopwatch _serverClock = Stopwatch();
-  int _serverEpoch = 0, resetsAt = 0, weeklyResetsAt = 0;
+  int _serverEpoch = 0,
+      resetsAt = 0,
+      weeklyResetsAt = 0,
+      weeklyStartsAt = 0,
+      weeklyEndsAt = 0;
+  bool weeklyActive = true;
   Map<String, CardInventoryEntry> cards = {};
   Map<String, PackInventoryEntry> packs = {};
   Map<String, PuzzleProgress> progress = {};
@@ -108,6 +145,8 @@ class OnlineGameService {
       WorldCoinConfig.rewardedAdAmount;
   int get weeklyStarsCollected =>
       (weeklyStars['totalStars'] as num?)?.toInt() ?? 0;
+  int get weeklyPoints =>
+      (weeklyStars['totalPoints'] as num?)?.toInt().clamp(0, 700) ?? 0;
   int get weeklyStagesCompleted =>
       (weeklyStars['stagesCompleted'] as num?)?.toInt() ??
       (weeklyStars['stages'] as Map? ?? {}).length;
@@ -124,9 +163,9 @@ class OnlineGameService {
           'Emuladores permitidos somente em desenvolvimento.',
         );
       }
-      const project = String.fromEnvironment('FIREBASE_PROJECT_ID');
-      const apiKey = String.fromEnvironment('FIREBASE_API_KEY');
-      const appId = String.fromEnvironment('FIREBASE_APP_ID');
+      final project = await _onlineConfigValue('FIREBASE_PROJECT_ID');
+      final apiKey = await _onlineConfigValue('FIREBASE_API_KEY');
+      final appId = await _onlineConfigValue('FIREBASE_APP_ID');
       if (!emulator && (project.isEmpty || apiKey.isEmpty || appId.isEmpty)) {
         throw const OnlineSetupException(
           'Os serviços online ainda não foram configurados nesta versão.',
@@ -137,10 +176,9 @@ class OnlineGameService {
           options: FirebaseOptions(
             apiKey: emulator ? 'demo-api-key' : apiKey,
             appId: emulator ? '1:123456789:android:demo' : appId,
-            messagingSenderId: const String.fromEnvironment(
-              'FIREBASE_SENDER_ID',
-              defaultValue: '123456789',
-            ),
+            messagingSenderId: emulator
+                ? '123456789'
+                : await _onlineConfigValue('FIREBASE_SENDER_ID'),
             projectId: emulator ? 'demo-puzzle-world' : project,
             iosBundleId: const String.fromEnvironment('FIREBASE_IOS_BUNDLE_ID'),
           ),
@@ -179,7 +217,9 @@ class OnlineGameService {
       event('login_completed');
     }
     await _loadJournal();
+    await _loadPendingSyncOperations();
     await sync();
+    unawaited(_retryPendingSyncOperations());
     if (!emulator) {
       try {
         final remote = FirebaseRemoteConfig.instance;
@@ -294,6 +334,9 @@ class OnlineGameService {
       weeklyStars = Map<String, dynamic>.from(state['weeklyStars'] as Map);
       resetsAt = (state['resetsAt'] as num).toInt();
       weeklyResetsAt = (state['weeklyResetsAt'] as num).toInt();
+      weeklyStartsAt = (state['weeklyStartsAt'] as num?)?.toInt() ?? 0;
+      weeklyEndsAt = (state['weeklyEndsAt'] as num?)?.toInt() ?? 0;
+      weeklyActive = state['weeklyActive'] != false;
       cards = newCards;
       packs = newPacks;
       packInstances = instances;
@@ -357,22 +400,29 @@ class OnlineGameService {
     return attempt!;
   }
 
-  Future<Map<String, dynamic>> finish({
+  Future<Map<String, dynamic>?> finish({
     int? moveCount,
     List<int>? placements,
     int? blocksLines,
     int? blocksScore,
   }) async {
     if (attempt == null) throw StateError('Nenhuma partida ativa.');
-    await saveJournal();
-    final result = await call('finishAttempt', {
+    final attemptId = attempt!['id'] as String;
+    final payload = <String, dynamic>{
       'attemptId': attempt!['id'],
       'moves': attemptMoves,
       if (moveCount != null) 'moveCount': moveCount,
       if (placements != null) 'placements': placements,
       if (blocksLines != null) 'blocksLines': blocksLines,
       if (blocksScore != null) 'blocksScore': blocksScore,
-    });
+    };
+    await _enqueueSyncOperation(
+      operationId: attemptId,
+      type: 'MATCH_RESULT',
+      payload: payload,
+    );
+    final result = await _submitMatchOperation(attemptId);
+    if (result == null) return null;
     attempt!['state'] = 'completed';
     attempt!['result'] = result;
     await saveJournal();
@@ -405,6 +455,11 @@ class OnlineGameService {
     return reward['packType'] as String;
   }
 
+  Future<List<String>> claimWeeklyRewards() async {
+    final result = await call('claimWeeklyRewards');
+    return (result['packTypes'] as List? ?? const []).cast<String>();
+  }
+
   Future<int> spendStarDust(int amount, {String? requestId}) async {
     final result = await call('spendStarDust', {
       'amount': amount,
@@ -433,8 +488,12 @@ class OnlineGameService {
       return const PackOpenOutcome(status: PackOpenStatus.notOwned);
     }
     pendingPack = instance;
+    pendingOpeningId ??= _requestId();
     await saveJournal();
-    final result = await call('openPack', {'packInstanceId': instance});
+    final result = await call('openPack', {
+      'packInstanceId': instance,
+      'openingId': pendingOpeningId,
+    });
     final rewards = (result['cards'] as List).map((raw) {
       final r = Map<String, dynamic>.from(raw as Map);
       final card = CardCatalog.cardById(r['cardId'] as String);
@@ -451,6 +510,7 @@ class OnlineGameService {
     // Keep the pending instance until the result can be presented, including after restart.
     await sync();
     pendingPack = null;
+    pendingOpeningId = null;
     await saveJournal();
     final count = packs[type]?.quantity ?? 0;
     if (count > 0) {
@@ -489,6 +549,7 @@ class OnlineGameService {
       attemptMoves = (value['moves'] as List? ?? []).cast<int>();
       pendingStart = value['pendingStart'] as Map<String, dynamic>?;
       pendingPack = value['pendingPack'] as String?;
+      pendingOpeningId = value['pendingOpeningId'] as String?;
     } catch (_) {
       /* Invalid local journals cannot grant any economic value. */
     }
@@ -501,11 +562,172 @@ class OnlineGameService {
       'moves': attemptMoves,
       'pendingStart': pendingStart,
       'pendingPack': pendingPack,
+      'pendingOpeningId': pendingOpeningId,
     });
     _journalWrite = _journalWrite.catchError((Object _) {}).then((_) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('online_attempt_$account', value);
     });
     return _journalWrite;
+  }
+
+  Future<void> _loadPendingSyncOperations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('pending_sync_operations_$uid');
+    if (raw == null) return;
+    try {
+      final decoded = jsonDecode(raw) as List;
+      _pendingSyncOperations
+        ..clear()
+        ..addAll(
+          decoded.whereType<Map>().map(
+            (value) => Map<String, dynamic>.from(value),
+          ),
+        );
+    } catch (_) {
+      // Corrupt local queue data is ignored; it can never grant a reward.
+    }
+  }
+
+  Future<void> _savePendingSyncOperations() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'pending_sync_operations_$uid',
+      jsonEncode(_pendingSyncOperations),
+    );
+  }
+
+  Future<void> _enqueueSyncOperation({
+    required String operationId,
+    required String type,
+    required Map<String, dynamic> payload,
+  }) async {
+    if (_pendingSyncOperations.any(
+      (operation) => operation['operationId'] == operationId,
+    )) {
+      return;
+    }
+    _pendingSyncOperations.add({
+      'operationId': operationId,
+      'userId': uid,
+      'type': type,
+      'timestamp': DateTime.now().toUtc().millisecondsSinceEpoch,
+      'payload': payload,
+      'retryCount': 0,
+      'status': 'pending',
+      'nextAttemptAt': 0,
+    });
+    await _savePendingSyncOperations();
+  }
+
+  bool _isRetryableSyncError(Object error) =>
+      error is SocketException ||
+      error is TimeoutException ||
+      error is FirebaseFunctionsException &&
+          const {
+            'unavailable',
+            'deadline-exceeded',
+            'internal',
+            'unknown',
+          }.contains(error.code);
+
+  Future<Map<String, dynamic>?> _submitMatchOperation(
+    String operationId,
+  ) async {
+    final index = _pendingSyncOperations.indexWhere(
+      (operation) => operation['operationId'] == operationId,
+    );
+    if (index < 0) return null;
+    final operation = _pendingSyncOperations[index];
+    operation['status'] = 'syncing';
+    await _savePendingSyncOperations();
+    try {
+      final result = await call(
+        'submitMatchResult',
+        Map<String, dynamic>.from(operation['payload'] as Map),
+      );
+      _pendingSyncOperations.removeWhere(
+        (candidate) => candidate['operationId'] == operationId,
+      );
+      await _savePendingSyncOperations();
+      return result;
+    } catch (error) {
+      if (!_isRetryableSyncError(error)) {
+        operation['status'] = 'failed';
+        operation['lastError'] = error.runtimeType.toString();
+        await _savePendingSyncOperations();
+        rethrow;
+      }
+      final retryCount = ((operation['retryCount'] as num?)?.toInt() ?? 0) + 1;
+      final delaySeconds = min(300, 5 * (1 << min(retryCount, 6)));
+      operation
+        ..['retryCount'] = retryCount
+        ..['status'] = 'pending'
+        ..['nextAttemptAt'] = DateTime.now()
+            .toUtc()
+            .add(Duration(seconds: delaySeconds))
+            .millisecondsSinceEpoch;
+      await _savePendingSyncOperations();
+      _schedulePendingSyncRetry(Duration(seconds: delaySeconds));
+      return null;
+    }
+  }
+
+  Future<void> _retryPendingSyncOperations() {
+    _pendingSyncDrain = _pendingSyncDrain.catchError((Object _) {}).then((
+      _,
+    ) async {
+      var synchronized = false;
+      final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+      final ids = [
+        for (final operation in _pendingSyncOperations)
+          if (operation['type'] == 'MATCH_RESULT' &&
+              operation['status'] != 'failed' &&
+              ((operation['nextAttemptAt'] as num?)?.toInt() ?? 0) <= now)
+            operation['operationId'] as String,
+      ];
+      for (final operationId in ids) {
+        final result = await _submitMatchOperation(operationId);
+        synchronized = synchronized || result != null;
+      }
+      if (synchronized) {
+        try {
+          await _sync();
+        } catch (_) {
+          // The committed operation is already safe; a later sync refreshes UI.
+        }
+      }
+      final pending = _pendingSyncOperations.where(
+        (operation) => operation['status'] == 'pending',
+      );
+      if (pending.isNotEmpty) {
+        final next = pending
+            .map(
+              (operation) =>
+                  (operation['nextAttemptAt'] as num?)?.toInt() ?? now + 5000,
+            )
+            .reduce(min);
+        _schedulePendingSyncRetry(
+          Duration(
+            milliseconds: max(
+              1000,
+              next - DateTime.now().toUtc().millisecondsSinceEpoch,
+            ),
+          ),
+        );
+      }
+    });
+    return _pendingSyncDrain;
+  }
+
+  void _schedulePendingSyncRetry(Duration delay) {
+    _pendingSyncRetryTimer?.cancel();
+    _pendingSyncRetryTimer = Timer(delay, () {
+      unawaited(_retryPendingSyncOperations());
+    });
+  }
+
+  void dispose() {
+    _pendingSyncRetryTimer?.cancel();
   }
 }

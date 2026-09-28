@@ -7,11 +7,13 @@ import 'package:flutter/scheduler.dart';
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../config/blocks_config.dart';
+import '../../core/theme/country_game_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../engine/blocks_engine.dart';
 import '../../models/blocks_level.dart';
 import '../../models/game_theme.dart';
 import '../../models/puzzle_result.dart';
+import '../../widgets/ads/footer_ad_banner.dart';
 import '../online/player_screens.dart';
 import '../victory/victory_screen.dart';
 
@@ -218,8 +220,11 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
       elapsedSeconds: _displaySeconds,
     );
     final result = _result(localStars, _engine.score);
+    final optimistic = _controller!.isOnline
+        ? _controller!.optimisticOnlineCompletion(result)
+        : const CompletionOutcome();
     final outcomeFuture = _controller!.isOnline
-        ? _finishOnlineInBackground()
+        ? _finishOnlineInBackground(optimistic)
         : _controller!.recordResult(widget.theme, result);
     if (!mounted) return;
     await Navigator.pushReplacement(
@@ -229,6 +234,7 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
           theme: widget.theme,
           level: widget.level.puzzleLevel,
           result: result,
+          outcome: optimistic,
           outcomeFuture: outcomeFuture,
           metricLabel: 'LINHAS',
           metricValue: '${_engine.clearedLines}',
@@ -240,8 +246,11 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
     );
   }
 
-  Future<CompletionOutcome> _finishOnlineInBackground() async {
+  Future<CompletionOutcome> _finishOnlineInBackground(
+    CompletionOutcome optimistic,
+  ) async {
     final outcome = await _controller!.finishOnline(
+      optimistic: optimistic,
       moveCount: _engine.piecesLocked,
       blocksLines: _engine.clearedLines,
       blocksScore: _engine.score,
@@ -330,60 +339,105 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: _engine.status == BlocksStatus.completed,
-    onPopInvokedWithResult: (didPop, _) async {
-      if (!didPop && await _confirmExit() && context.mounted) {
-        Navigator.pop(context);
-      }
-    },
-    child: Focus(
-      autofocus: true,
-      onKeyEvent: _onKey,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF24150F),
-        appBar: AppBar(
-          title: Text(
-            '${widget.theme.name} • ${widget.level.difficulty.label}',
-          ),
-          leading: IconButton(
-            tooltip: 'Sair',
-            onPressed: () async {
-              final exit = await _confirmExit();
-              if (exit && context.mounted) {
-                Navigator.pop(context);
-              }
-            },
-            icon: const Icon(Icons.close_rounded),
-          ),
-          actions: [
-            const CurrentEnergyIndicator(interactive: false, light: true),
-            IconButton(
-              tooltip: _engine.status == BlocksStatus.paused
-                  ? 'Continuar'
-                  : 'Pausar',
-              onPressed:
-                  _loading ||
-                      ![
-                        BlocksStatus.playing,
-                        BlocksStatus.paused,
-                      ].contains(_engine.status)
-                  ? null
-                  : _togglePause,
-              icon: Icon(
-                _engine.status == BlocksStatus.paused
-                    ? Icons.play_arrow_rounded
-                    : Icons.pause_rounded,
-              ),
+  Widget build(BuildContext context) {
+    final countryTheme = CountryGameTheme.forCountry(
+      widget.theme.id,
+      Color(widget.theme.accent),
+    );
+    return PopScope(
+      canPop: _engine.status == BlocksStatus.completed,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop && await _confirmExit() && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: Scaffold(
+          backgroundColor: countryTheme.backgroundBottom,
+          appBar: AppBar(
+            backgroundColor: countryTheme.backgroundTop,
+            title: Text(
+              '${widget.theme.name} • ${widget.level.difficulty.label}',
             ),
-          ],
+            leading: IconButton(
+              tooltip: 'Sair',
+              onPressed: () async {
+                final exit = await _confirmExit();
+                if (exit && context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
+              icon: const Icon(Icons.close_rounded),
+            ),
+            actions: [
+              const CurrentEnergyIndicator(interactive: false, light: true),
+              IconButton(
+                tooltip: _engine.status == BlocksStatus.paused
+                    ? 'Continuar'
+                    : 'Pausar',
+                onPressed:
+                    _loading ||
+                        ![
+                          BlocksStatus.playing,
+                          BlocksStatus.paused,
+                        ].contains(_engine.status)
+                    ? null
+                    : _togglePause,
+                icon: Icon(
+                  _engine.status == BlocksStatus.paused
+                      ? Icons.play_arrow_rounded
+                      : Icons.pause_rounded,
+                ),
+              ),
+            ],
+          ),
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(widget.theme.wallpaper, fit: BoxFit.cover),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      countryTheme.backgroundTop.withValues(alpha: .86),
+                      countryTheme.backgroundBottom.withValues(alpha: .96),
+                    ],
+                  ),
+                ),
+              ),
+              SafeArea(child: _body(countryTheme)),
+            ],
+          ),
+          bottomNavigationBar: ColoredBox(
+            color: countryTheme.surface,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 20),
+                  child: _Controls(
+                    enabled: _acceptsInput,
+                    onLeft: () => _move(-1),
+                    onRight: () => _move(1),
+                    onRotate: _rotate,
+                    onSoftDrop: _softDrop,
+                    onHardDrop: _hardDrop,
+                  ),
+                ),
+                FooterAdBanner(backgroundColor: countryTheme.backgroundBottom),
+              ],
+            ),
+          ),
         ),
-        body: SafeArea(child: _body()),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _body() {
+  Widget _body(CountryGameTheme countryTheme) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
@@ -408,7 +462,7 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final cellByWidth = (constraints.maxWidth - 126) / blocksBoardWidth;
-        final cellByHeight = (constraints.maxHeight - 154) / blocksBoardHeight;
+        final cellByHeight = (constraints.maxHeight - 64) / blocksBoardHeight;
         final cell =
             cellByWidth.clamp(12.0, 32.0) < cellByHeight.clamp(12.0, 32.0)
             ? cellByWidth.clamp(12.0, 32.0)
@@ -447,6 +501,7 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
                         painter: BlocksBoardPainter(
                           engine: _engine,
                           flashing: _engine.pendingLines.isNotEmpty,
+                          theme: countryTheme,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -466,6 +521,7 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
                               size: const Size(72, 72),
                               painter: BlocksPreviewPainter(
                                 type: _engine.nextPiece,
+                                theme: countryTheme,
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -482,15 +538,6 @@ class _BlocksGameScreenState extends State<BlocksGameScreen>
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 9),
-                  _Controls(
-                    enabled: _acceptsInput,
-                    onLeft: () => _move(-1),
-                    onRight: () => _move(1),
-                    onRotate: _rotate,
-                    onSoftDrop: _softDrop,
-                    onHardDrop: _hardDrop,
                   ),
                   if (_engine.combo > 0)
                     Padding(
@@ -600,32 +647,44 @@ class _Controls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
+    key: const Key('blocks-controls'),
     children: [
-      _Control(
-        icon: Icons.arrow_left_rounded,
-        label: 'Esq.',
-        onTap: enabled ? onLeft : null,
+      Expanded(
+        child: _Control(
+          key: const Key('blocks-control-left'),
+          icon: Icons.arrow_left_rounded,
+          label: 'Esq.',
+          onTap: enabled ? onLeft : null,
+        ),
       ),
-      _Control(
-        icon: Icons.rotate_right_rounded,
-        label: 'Girar',
-        onTap: enabled ? onRotate : null,
+      Expanded(
+        child: _Control(
+          icon: Icons.rotate_right_rounded,
+          label: 'Girar',
+          onTap: enabled ? onRotate : null,
+        ),
       ),
-      _Control(
-        icon: Icons.arrow_downward_rounded,
-        label: 'Descer',
-        onTap: enabled ? onSoftDrop : null,
+      Expanded(
+        child: _Control(
+          icon: Icons.arrow_downward_rounded,
+          label: 'Descer',
+          onTap: enabled ? onSoftDrop : null,
+        ),
       ),
-      _Control(
-        icon: Icons.vertical_align_bottom_rounded,
-        label: 'Soltar',
-        onTap: enabled ? onHardDrop : null,
+      Expanded(
+        child: _Control(
+          icon: Icons.vertical_align_bottom_rounded,
+          label: 'Soltar',
+          onTap: enabled ? onHardDrop : null,
+        ),
       ),
-      _Control(
-        icon: Icons.arrow_right_rounded,
-        label: 'Dir.',
-        onTap: enabled ? onRight : null,
+      Expanded(
+        child: _Control(
+          key: const Key('blocks-control-right'),
+          icon: Icons.arrow_right_rounded,
+          label: 'Dir.',
+          onTap: enabled ? onRight : null,
+        ),
       ),
     ],
   );
@@ -636,6 +695,7 @@ class _Control extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    super.key,
   });
   final IconData icon;
   final String label;
@@ -643,13 +703,13 @@ class _Control extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 3),
+    padding: const EdgeInsets.symmetric(horizontal: 2),
     child: Semantics(
       button: true,
       label: label,
       child: SizedBox(
-        width: 54,
-        height: 50,
+        width: double.infinity,
+        height: 64,
         child: FilledButton(
           style: FilledButton.styleFrom(
             padding: EdgeInsets.zero,
@@ -661,8 +721,8 @@ class _Control extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 23),
-              Text(label, style: const TextStyle(fontSize: 9)),
+              Icon(icon, size: 28),
+              Text(label, style: const TextStyle(fontSize: 11)),
             ],
           ),
         ),
@@ -672,22 +732,27 @@ class _Control extends StatelessWidget {
 }
 
 class BlocksBoardPainter extends CustomPainter {
-  const BlocksBoardPainter({required this.engine, required this.flashing});
+  const BlocksBoardPainter({
+    required this.engine,
+    required this.flashing,
+    required this.theme,
+  });
   final BlocksEngine engine;
   final bool flashing;
+  final CountryGameTheme theme;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cell = size.width / engine.width;
     canvas.drawRRect(
       RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(4)),
-      Paint()..color = const Color(0xFF10242A),
+      Paint()..color = theme.board,
     );
     for (var y = 0; y < engine.height; y++) {
       for (var x = 0; x < engine.width; x++) {
         final type = engine.board[y][x];
         if (type != null) {
-          _paintCell(canvas, x, y, cell, type);
+          _paintCell(canvas, x, y, cell, type, theme.blockPalette);
         }
       }
     }
@@ -702,13 +767,23 @@ class BlocksBoardPainter extends CustomPainter {
             y,
             cell,
             piece.type,
+            theme.blockPalette,
             ghost: true,
           );
         }
       }
       for (final point in BlocksEngine.cellsFor(piece.type, piece.rotation)) {
         final y = piece.y + point.y;
-        if (y >= 0) _paintCell(canvas, piece.x + point.x, y, cell, piece.type);
+        if (y >= 0) {
+          _paintCell(
+            canvas,
+            piece.x + point.x,
+            y,
+            cell,
+            piece.type,
+            theme.blockPalette,
+          );
+        }
       }
     }
     if (flashing) {
@@ -733,14 +808,15 @@ class BlocksBoardPainter extends CustomPainter {
 }
 
 class BlocksPreviewPainter extends CustomPainter {
-  const BlocksPreviewPainter({required this.type});
+  const BlocksPreviewPainter({required this.type, required this.theme});
   final TetrominoType type;
+  final CountryGameTheme theme;
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRRect(
       RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)),
-      Paint()..color = const Color(0xFF10242A),
+      Paint()..color = theme.board,
     );
     const cell = 14.0;
     final cells = BlocksEngine.cellsFor(type, 0);
@@ -749,7 +825,14 @@ class BlocksPreviewPainter extends CustomPainter {
     final offsetX = (size.width - (maxX + 1) * cell) / 2 / cell;
     final offsetY = (size.height - (maxY + 1) * cell) / 2 / cell;
     for (final point in cells) {
-      _paintCell(canvas, point.x + offsetX, point.y + offsetY, cell, type);
+      _paintCell(
+        canvas,
+        point.x + offsetX,
+        point.y + offsetY,
+        cell,
+        type,
+        theme.blockPalette,
+      );
     }
   }
 
@@ -763,11 +846,12 @@ void _paintCell(
   num x,
   num y,
   double cell,
-  TetrominoType type, {
+  TetrominoType type,
+  List<Color> palette, {
   bool ghost = false,
 }) {
   final rect = Rect.fromLTWH(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
-  final color = _pieceColors[type]!;
+  final color = palette[type.index % palette.length];
   final fill = Paint()
     ..color = ghost ? color.withValues(alpha: .17) : color
     ..style = ghost ? PaintingStyle.stroke : PaintingStyle.fill
@@ -838,13 +922,3 @@ void _paintCell(
     );
   }
 }
-
-const _pieceColors = <TetrominoType, Color>{
-  TetrominoType.i: Color(0xFF49C8CF),
-  TetrominoType.o: Color(0xFFF0C75E),
-  TetrominoType.t: Color(0xFFA47BD5),
-  TetrominoType.s: Color(0xFF68B875),
-  TetrominoType.z: Color(0xFFD8665C),
-  TetrominoType.j: Color(0xFF638DD4),
-  TetrominoType.l: Color(0xFFE69A55),
-};

@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 import '../../engine/jigsaw_engine.dart';
 import '../../engine/jigsaw_geometry.dart';
 
+const double jigsawPiecePaddingFactor = .20;
+
+double jigsawPiecePadding(double width, double height) =>
+    jigsawPiecePaddingFactor * (width < height ? width : height);
+
 class JigsawPieceView extends StatelessWidget {
   const JigsawPieceView({
     required this.piece,
@@ -25,54 +30,26 @@ class JigsawPieceView extends StatelessWidget {
   final int columns;
   final bool active;
 
-  double get padding =>
-      .24 * (pieceWidth < pieceHeight ? pieceWidth : pieceHeight);
+  double get padding => jigsawPiecePadding(pieceWidth, pieceHeight);
   Size get paintSize =>
       Size(pieceWidth + padding * 2, pieceHeight + padding * 2);
 
   @override
   Widget build(BuildContext context) => RepaintBoundary(
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: active ? .48 : .28),
-            blurRadius: active ? 10 : 5,
-            offset: Offset(0, active ? 5 : 2),
-          ),
-        ],
-      ),
-      child: ClipPath(
-        clipper: _JigsawClipper(piece, padding),
-        child: CustomPaint(
-          size: paintSize,
-          painter: _JigsawPiecePainter(
-            piece: piece,
-            image: image,
-            pieceWidth: pieceWidth,
-            pieceHeight: pieceHeight,
-            padding: padding,
-            rows: rows,
-            columns: columns,
-          ),
-        ),
+    child: CustomPaint(
+      size: paintSize,
+      painter: _JigsawPiecePainter(
+        piece: piece,
+        image: image,
+        pieceWidth: pieceWidth,
+        pieceHeight: pieceHeight,
+        padding: padding,
+        rows: rows,
+        columns: columns,
+        active: active,
       ),
     ),
   );
-}
-
-class _JigsawClipper extends CustomClipper<Path> {
-  const _JigsawClipper(this.piece, this.padding);
-  final JigsawPieceState piece;
-  final double padding;
-
-  @override
-  Path getClip(Size size) =>
-      JigsawGeometry.pathFor(piece, size, padding: padding);
-
-  @override
-  bool shouldReclip(_JigsawClipper oldClipper) =>
-      oldClipper.piece != piece || oldClipper.padding != padding;
 }
 
 class _JigsawPiecePainter extends CustomPainter {
@@ -84,6 +61,7 @@ class _JigsawPiecePainter extends CustomPainter {
     required this.padding,
     required this.rows,
     required this.columns,
+    required this.active,
   });
 
   final JigsawPieceState piece;
@@ -93,10 +71,18 @@ class _JigsawPiecePainter extends CustomPainter {
   final double padding;
   final int rows;
   final int columns;
+  final bool active;
 
   @override
   void paint(Canvas canvas, Size size) {
     final path = JigsawGeometry.pathFor(piece, size, padding: padding);
+    canvas.drawShadow(
+      path,
+      Colors.black.withValues(alpha: active ? .52 : .30),
+      active ? 7 : 3,
+      false,
+    );
+    canvas.save();
     canvas
       ..clipPath(path)
       ..drawImageRect(
@@ -108,15 +94,22 @@ class _JigsawPiecePainter extends CustomPainter {
           columns * pieceWidth,
           rows * pieceHeight,
         ),
-        Paint()..filterQuality = FilterQuality.high,
+        Paint()..filterQuality = FilterQuality.medium,
       )
       ..drawPath(
         path,
         Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.1
-          ..color = Colors.white.withValues(alpha: .72),
+          ..color = Colors.white.withValues(alpha: .035)
+          ..blendMode = BlendMode.softLight,
       );
+    canvas.restore();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = .75
+        ..color = Colors.white.withValues(alpha: .34),
+    );
   }
 
   @override
@@ -124,5 +117,9 @@ class _JigsawPiecePainter extends CustomPainter {
       oldDelegate.image != image ||
       oldDelegate.piece != piece ||
       oldDelegate.pieceWidth != pieceWidth ||
-      oldDelegate.pieceHeight != pieceHeight;
+      oldDelegate.pieceHeight != pieceHeight ||
+      oldDelegate.padding != padding ||
+      oldDelegate.rows != rows ||
+      oldDelegate.columns != columns ||
+      oldDelegate.active != active;
 }

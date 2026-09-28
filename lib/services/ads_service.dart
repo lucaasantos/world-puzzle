@@ -2,17 +2,22 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:flutter/services.dart';
 
 import '../core/config/ads_config.dart';
 
 enum RewardedAdOutcome { earned, notEarned, unavailable, failedToShow }
 
 class AdsService {
+  static const _configChannel = MethodChannel('puzzle_world/config');
   RewardedAd? _rewarded;
   Future<bool>? _rewardedLoad;
   InterstitialAd? _interstitial;
   Future<void>? _initialization;
   bool _initialized = false;
+  String _rewardedId = '';
+  String _interstitialId = '';
+  String _bannerId = '';
   int _completedSinceInterstitial = 0;
   int interstitialEvery = AdsConfig.interstitialEveryCompletions;
   void Function(String, [Map<String, Object>?])? onEvent;
@@ -25,6 +30,21 @@ class AdsService {
     if (!AdsConfig.enabled) return;
     try {
       await MobileAds.instance.initialize().timeout(const Duration(seconds: 8));
+      _rewardedId = await _configuredAdId(
+        androidName: 'ADMOB_ANDROID_REWARDED_ID',
+        androidValue: AdsConfig.androidRewardedId,
+        iosValue: AdsConfig.iosRewardedId,
+      );
+      _interstitialId = await _configuredAdId(
+        androidName: 'ADMOB_ANDROID_INTERSTITIAL_ID',
+        androidValue: AdsConfig.androidInterstitialId,
+        iosValue: AdsConfig.iosInterstitialId,
+      );
+      _bannerId = await _configuredAdId(
+        androidName: 'ADMOB_ANDROID_BANNER_ID',
+        androidValue: AdsConfig.androidBannerId,
+        iosValue: AdsConfig.iosBannerId,
+      );
       _initialized = true;
       unawaited(_loadRewarded());
       _loadInterstitial();
@@ -34,14 +54,51 @@ class AdsService {
     }
   }
 
-  String get _rewardedId => Platform.isAndroid
-      ? AdsConfig.androidRewardedId
-      : AdsConfig.iosRewardedId;
-  String get _interstitialId => Platform.isAndroid
-      ? AdsConfig.androidInterstitialId
-      : AdsConfig.iosInterstitialId;
+  Future<String> _configuredAdId({
+    required String androidName,
+    required String androidValue,
+    required String iosValue,
+  }) async {
+    if (!Platform.isAndroid) return iosValue;
+    if (androidValue.isNotEmpty) return androidValue;
+    try {
+      final config = await _configChannel.invokeMapMethod<String, String>(
+        'getOnlineConfig',
+      );
+      return config?[androidName] ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
 
   bool get isRewardedReady => _rewarded != null;
+
+  Future<BannerAd?> loadBanner() async {
+    if (!_initialized) await initialize();
+    if (!_initialized || _bannerId.isEmpty) return null;
+    final result = Completer<BannerAd?>();
+    late final BannerAd ad;
+    ad = BannerAd(
+      adUnitId: _bannerId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) => result.complete(ad),
+        onAdFailedToLoad: (_, __) {
+          ad.dispose();
+          result.complete(null);
+        },
+      ),
+    );
+    await ad.load();
+    return result.future.timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {
+        ad.dispose();
+        return null;
+      },
+    );
+  }
 
   Future<bool> prepareRewarded() async {
     if (!_initialized) await initialize();

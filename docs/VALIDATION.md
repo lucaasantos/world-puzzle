@@ -1,5 +1,12 @@
 # Verificação da integração online — 16/09/2026
 
+## Configuração online automática no Android — 24/09/2026
+
+- O Gradle Android agora lê `config/firebase.local.json` em toda compilação e incorpora os valores públicos como recursos nativos.
+- O cliente Dart preserva `--dart-define-from-file` como prioridade e usa os recursos nativos como fallback, eliminando a dependência do argumento manual em `flutter run` e `flutter build apk`.
+- A APK debug foi compilada e instalada no Moto G9 Power sem `--dart-define-from-file`. A inicialização do Firebase recuperou a conta existente e abriu a tela principal, sem exibir “Serviços online em preparação”.
+- O arquivo de testes focados do fluxo online passou e a APK foi mantida aberta no aparelho após a validação.
+
 ## Validação após alterações do Antigravity — 17/09/2026, 16:51
 
 - Revisadas as alterações recentes em `home_screen.dart`, `player_screens.dart` e `game_screen.dart`; esta pasta não possui histórico Git para comparação exata.

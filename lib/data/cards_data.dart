@@ -35,6 +35,7 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
       'Cristo Redentor',
       _landmark,
       rarity: _legendary,
+      description: 'Ícone do Rio de Janeiro e símbolo mundial do Brasil.',
     ),
     _CardSeed('sugarloaf_mountain', 'Pão de Açúcar', _landmark),
     _CardSeed('amazon_rainforest', 'Floresta Amazônica', _nature),
@@ -70,6 +71,7 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
       'Estátua da Liberdade',
       _landmark,
       rarity: _legendary,
+      description: 'Símbolo de liberdade na entrada de Nova York.',
     ),
     _CardSeed('white_house', 'Casa Branca', _landmark),
     _CardSeed('capitol', 'Capitólio', _landmark),
@@ -101,7 +103,13 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
     _CardSeed('fukuoka', 'Fukuoka', _city),
     _CardSeed('flag', 'Bandeira do Japão', _flag),
     _CardSeed('jpy', 'Iene', _currency),
-    _CardSeed('mount_fuji', 'Monte Fuji', _nature, rarity: _legendary),
+    _CardSeed(
+      'mount_fuji',
+      'Monte Fuji',
+      _nature,
+      rarity: _legendary,
+      description: 'Símbolo natural e cultural do Japão.',
+    ),
     _CardSeed('geisha', 'Gueixa', _culture),
     _CardSeed('samurai', 'Samurai', _historical),
     _CardSeed('ninja', 'Ninja', _historical),
@@ -133,7 +141,13 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
     _CardSeed('versailles', 'Versailles', _city),
     _CardSeed('flag', 'Bandeira francesa', _flag),
     _CardSeed('eur', 'Euro', _currency),
-    _CardSeed('eiffel_tower', 'Torre Eiffel', _landmark, rarity: _legendary),
+    _CardSeed(
+      'eiffel_tower',
+      'Torre Eiffel',
+      _landmark,
+      rarity: _legendary,
+      description: 'Marco de Paris e da arquitetura francesa.',
+    ),
     _CardSeed('arc_de_triomphe', 'Arco do Triunfo', _landmark),
     _CardSeed('louvre_museum', 'Museu do Louvre', _landmark),
     _CardSeed('notre_dame', 'Catedral de Notre-Dame', _landmark),
@@ -164,7 +178,13 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
     _CardSeed('palermo', 'Palermo', _city),
     _CardSeed('flag', 'Bandeira italiana', _flag),
     _CardSeed('eur', 'Euro', _currency),
-    _CardSeed('colosseum', 'Coliseu', _landmark, rarity: _legendary),
+    _CardSeed(
+      'colosseum',
+      'Coliseu',
+      _landmark,
+      rarity: _legendary,
+      description: 'Anfiteatro que preserva a grandiosidade da Roma Antiga.',
+    ),
     _CardSeed('leaning_tower', 'Torre de Pisa', _landmark),
     _CardSeed('trevi_fountain', 'Fontana di Trevi', _landmark),
     _CardSeed(
@@ -203,7 +223,13 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
     _CardSeed('big_ben', 'Big Ben', _landmark),
     _CardSeed('tower_bridge', 'Tower Bridge', _landmark),
     _CardSeed('buckingham_palace', 'Palácio de Buckingham', _landmark),
-    _CardSeed('stonehenge', 'Stonehenge', _landmark, rarity: _legendary),
+    _CardSeed(
+      'stonehenge',
+      'Stonehenge',
+      _landmark,
+      rarity: _legendary,
+      description: 'Monumento pré-histórico cercado por mistério.',
+    ),
     _CardSeed('windsor_castle', 'Castelo de Windsor', _landmark),
     _CardSeed('loch_ness', 'Loch Ness', _nature),
     _CardSeed('scottish_highlands', 'Highlands da Escócia', _nature),
@@ -237,6 +263,7 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
       'Grande Muralha da China',
       _landmark,
       rarity: _legendary,
+      description: 'Fortificação monumental do norte da China.',
     ),
     _CardSeed('forbidden_city', 'Cidade Proibida', _landmark),
     _CardSeed('terracotta_army', 'Exército de Terracota', _historical),
@@ -273,7 +300,13 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
     _CardSeed('udaipur', 'Udaipur', _city),
     _CardSeed('flag', 'Bandeira da Índia', _flag),
     _CardSeed('inr', 'Rupia indiana', _currency),
-    _CardSeed('taj_mahal', 'Taj Mahal', _landmark, rarity: _legendary),
+    _CardSeed(
+      'taj_mahal',
+      'Taj Mahal',
+      _landmark,
+      rarity: _legendary,
+      description: 'Mausoléu de mármore e símbolo de amor na Índia.',
+    ),
     _CardSeed('red_fort', 'Forte Vermelho', _landmark),
     _CardSeed('hawa_mahal', 'Hawa Mahal', _landmark),
     _CardSeed('gateway_of_india', 'Portão da Índia', _landmark),
@@ -312,6 +345,7 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
       'Pirâmide de Quéops',
       _landmark,
       rarity: _legendary,
+      description: 'Maravilha do mundo antigo ainda preservada em Gizé.',
     ),
     _CardSeed('giza_pyramids', 'Pirâmides de Gizé', _landmark),
     _CardSeed('great_sphinx', 'Grande Esfinge', _landmark),
@@ -346,7 +380,13 @@ const _baseCountrySeeds = <String, List<_CardSeed>>{
     _CardSeed('nafplio', 'Nafplio', _city),
     _CardSeed('flag', 'Bandeira da Grécia', _flag),
     _CardSeed('eur', 'Euro', _currency),
-    _CardSeed('acropolis', 'Acrópole de Atenas', _landmark, rarity: _legendary),
+    _CardSeed(
+      'acropolis',
+      'Acrópole de Atenas',
+      _landmark,
+      rarity: _legendary,
+      description: 'Conjunto monumental que simboliza a Grécia Antiga.',
+    ),
     _CardSeed('parthenon', 'Partenon', _landmark),
     _CardSeed('mount_olympus', 'Monte Olimpo', _nature),
     _CardSeed('temple_of_poseidon', 'Templo de Poseidon', _landmark),
@@ -1330,7 +1370,7 @@ List<CollectibleCard> _buildCountryCards(
     id: id,
     countryId: country.id,
     name: seed.name,
-    description: _descriptionFor(seed, country.name),
+    description: seed.description ?? _descriptionFor(seed, country.name),
     rarity: rarity,
     category: seed.category,
     imagePath:
@@ -1375,12 +1415,19 @@ String _descriptionFor(
 };
 
 class _CardSeed {
-  const _CardSeed(this.slug, this.name, this.category, {this.rarity});
+  const _CardSeed(
+    this.slug,
+    this.name,
+    this.category, {
+    this.rarity,
+    this.description,
+  });
 
   final String slug;
   final String name;
   final String category;
   final String? rarity;
+  final String? description;
 }
 
 class _Entry {

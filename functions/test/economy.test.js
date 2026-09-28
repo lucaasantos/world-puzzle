@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, sign} from 'node:crypto';
-import {blocksLimits, defaults, validateConfig, levelFor, dailyCycle, weeklyCycle, normalizeWorldCoinEconomy, regenerate, explorationScore, explorationTier, weighted, shuffledBoard, verifyBlocksSolution, verifySolution} from '../src/economy.js';
+import {blocksLimits, boostedRarityWeights, dailyCountryPool, defaults, validateConfig, levelFor, dailyCycle, weeklyCycle, normalizeWorldCoinEconomy, regenerate, explorationScore, explorationTier, weighted, shuffledBoard, verifyBlocksSolution, verifySolution} from '../src/economy.js';
 import {verifyAdCallback} from '../src/ssv.js';
 
 test('progressive levels preserve all XP above the cap',()=>{
@@ -18,10 +18,13 @@ test('UTC reset boundary and regeneration use server time',()=>{
   assert.equal(regenerate(start,boundary+1800000).lives,2);
   assert.equal(regenerate(start,boundary+86400000).lives,4);
   assert.equal(regenerate(start,boundary-500).lives,1);
-  const sunday=Date.parse('2026-09-20T03:00:00Z');
-  assert.equal(weeklyCycle(sunday-1).id,'2026-09-13');
-  assert.equal(weeklyCycle(sunday).id,'2026-09-20');
-  assert.equal(weeklyCycle(sunday).resetsAt,Date.parse('2026-09-27T03:00:00Z'));
+  const monday=Date.parse('2026-09-21T03:00:00Z');
+  assert.equal(weeklyCycle(monday-1).id,'2026-09-14');
+  assert.equal(weeklyCycle(monday).id,'2026-09-21');
+  assert.equal(weeklyCycle(monday).endsAt,Date.parse('2026-09-27T16:00:00Z'));
+  assert.equal(weeklyCycle(Date.parse('2026-09-27T15:59:59Z')).active,true);
+  assert.equal(weeklyCycle(Date.parse('2026-09-27T16:00:00Z')).active,false);
+  assert.equal(weeklyCycle(Date.parse('2026-09-27T16:00:00Z')).resetsAt,Date.parse('2026-09-28T03:00:00Z'));
 });
 test('World Coin defaults, migration, reset, integer safety and config are server-defined',()=>{
   const day='2026-09-21';
@@ -34,10 +37,10 @@ test('World Coin defaults, migration, reset, integer safety and config are serve
   assert.throws(()=>validateConfig({...defaults,worldCoin:{rewardedAdAmount:1000,dailyAdLimit:10}}));
 });
 test('daily exploration derives best score and fixed reward milestones',()=>{
-  const choices=['easy','medium','hard'];
+  const choices=['easy','medium','hard','veryHard'];
   for(const a of choices)for(const b of choices)for(const c of choices)for(const d of choices){
     const values=[a,b,c,d], score=values.reduce((s,v)=>s+defaults.dailyPoints[v],0);
-    const expected=score>=80?4:score>=70?3:score>=60?2:1;
+    const expected=score>=100?5:score>=80?4:score>=70?3:score>=60?2:1;
     const countries=Object.fromEntries(values.map((v,i)=>[String(i),{completed:true,bestDifficulty:v,bestPoints:defaults.dailyPoints[v]}]));
     assert.equal(explorationScore(countries),score);
     assert.equal(explorationTier(countries),expected);
@@ -46,7 +49,13 @@ test('daily exploration derives best score and fixed reward milestones',()=>{
   assert.throws(()=>explorationTier({japan:'hard'}));
   assert.throws(()=>explorationTier({a:'easy',b:'easy',c:'easy',d:'hacked'}));
 });
-test('odds boundaries, bad config, and disabled milestones',()=>{
+
+test('daily countries and permanent level bonuses use the live client contract',()=>{
+  assert.deepEqual(dailyCountryPool,['brazil','japan','united_states','egypt']);
+  assert.equal(explorationScore(Object.fromEntries(dailyCountryPool.map(country=>[country,'easy']))),40);
+  assert.deepEqual(boostedRarityWeights({common:72,rare:23,epic:4.5,legendary:.5},30),{common:68.5,rare:25,epic:5.5,legendary:1});
+});
+test('odds boundaries, bad config, and enabled progression milestones',()=>{
   assert.equal(weighted([70,25,4,1],()=>0),0);
   assert.equal(weighted([70,25,4,1],()=>.7),1);
   assert.equal(weighted([70,25,4,1],()=>.95),2);
@@ -54,7 +63,8 @@ test('odds boundaries, bad config, and disabled milestones',()=>{
   assert.equal(validateConfig(defaults),defaults);
   assert.throws(()=>validateConfig({...defaults,packOdds:[[1000,0,0,0]]}));
   assert.throws(()=>validateConfig({...defaults,lives:{...defaults.lives,cost:0}}));
-  assert.ok(defaults.milestones.every(m=>!m.enabled));
+  assert.ok(defaults.milestones.every(m=>m.enabled));
+  assert.deepEqual(defaults.weeklyRewards.map(reward=>reward.points),[300,450,600,700]);
 });
 test('server challenges have a valid permutation and reject forged solutions',()=>{
   for(const grid of [3,4,5]){

@@ -34,7 +34,7 @@ test('online economy: auth, rules, concurrent completion/claim/open, duplicates,
   const adb=env.authenticatedContext(a.localId).firestore(),bdb=env.authenticatedContext(b.localId).firestore();
   await assertSucceeds(getDoc(doc(adb,`users/${a.localId}`)));
   await assertFails(getDoc(doc(bdb,`users/${a.localId}`)));
-  for(const path of [`users/${a.localId}`,`users/${a.localId}/collection/fake`,`users/${a.localId}/packs/fake`,`users/${a.localId}/dailyExploration/fake`,`users/${a.localId}/weeklyStarProgress/fake`,`users/${a.localId}/rewards/fake`,`users/${a.localId}/attempts/fake`,`users/${a.localId}/economyTransactions/fake`,`profiles/${a.localId}`,`nicknames/fake`]) await assertFails(setDoc(doc(adb,path),{totalXp:999999,lives:99,worldCoins:999999}));
+  for(const path of [`users/${a.localId}`,`users/${a.localId}/collection/fake`,`users/${a.localId}/packs/fake`,`users/${a.localId}/packOpenings/fake`,`users/${a.localId}/dailyExploration/fake`,`users/${a.localId}/weeklyStarProgress/fake`,`users/${a.localId}/rewards/fake`,`users/${a.localId}/attempts/fake`,`users/${a.localId}/economyTransactions/fake`,`profiles/${a.localId}`,`nicknames/fake`]) await assertFails(setDoc(doc(adb,path),{totalXp:999999,lives:99,worldCoins:999999}));
   const userRef=db.doc(`users/${a.localId}`);
   let state=await call(a,'syncPlayer');
   assert.equal(state.user.worldCoins,0);assert.equal(state.user.worldCoinRewardAds.earnedToday,0);
@@ -60,7 +60,7 @@ test('online economy: auth, rules, concurrent completion/claim/open, duplicates,
   await assert.rejects(call(a,'prepareWorldCoinAd'),{status:'RESOURCE_EXHAUSTED'});
   await userRef.update({worldCoinRewardAds:{cycleId:'2000-01-01',earnedToday:10},lastWorldCoinAdTicketAt:0});
   assert.equal((await call(a,'prepareWorldCoinAd')).earnedToday,0);
-  const countries=['brazil','japan','egypt','greece'];
+  const countries=['brazil','japan','united_states','egypt'];
   for(let i=0;i<4;i++){
     const request={requestId:`attempt_${i}`,countryId:countries[i],levelId:`${countries[i]}_01`,difficulty:'easy',gameMode:'sliding'};
     const [one,two]=await Promise.all([call(a,'startAttempt',request),call(a,'startAttempt',request)]);
@@ -69,8 +69,9 @@ test('online economy: auth, rules, concurrent completion/claim/open, duplicates,
     await assert.rejects(call(a,'finishAttempt',{attemptId:one.id,moves:[]}),{status:'INVALID_ARGUMENT'});
     // Controlled puzzle fixture; production clients cannot write attempts (rules above).
     await db.doc(`users/${a.localId}/attempts/${one.id}`).update({board:[0,1,2,3,4,5,6,8,7],startedAt:Date.now()-5000});
-    const completed=await Promise.all([call(a,'finishAttempt',{attemptId:one.id,moves:[8]}),call(a,'finishAttempt',{attemptId:one.id,moves:[8]})]);
+    const completed=await Promise.all([call(a,'submitMatchResult',{attemptId:one.id,moves:[8]}),call(a,'submitMatchResult',{attemptId:one.id,moves:[8]})]);
     assert.deepEqual(completed[0],completed[1]);
+    assert.equal(completed[0].matchId,one.id);
     assert.equal(completed[0].dailyProgress,i+1);
   }
   state=await call(a,'syncPlayer');
@@ -83,8 +84,9 @@ test('online economy: auth, rules, concurrent completion/claim/open, duplicates,
   const claims=await Promise.all(Array.from({length:5},()=>call(a,'claimExploration',{dailyId})));
   assert.ok(claims.every(r=>r.id===claims[0].id));assert.equal(claims[0].packType,'world_pack');
   assert.equal((await db.collection(`users/${a.localId}/packs`).get()).size,1);
-  const opened=await Promise.all([call(a,'openPack',{packInstanceId:claims[0].id}),call(a,'openPack',{packInstanceId:claims[0].id})]);
+  const opened=await Promise.all([call(a,'openPack',{packInstanceId:claims[0].id,openingId:'opening_once'}),call(a,'openPack',{packInstanceId:claims[0].id,openingId:'opening_once'})]);
   assert.deepEqual(opened[0],opened[1]);assert.equal(opened[0].cards.length,4);
+  assert.equal((await db.collection(`users/${a.localId}/packOpenings`).get()).size,1);
   state=await call(a,'syncPlayer');assert.equal(state.user.cardsReceived,4);
   const card=opened[0].cards[0].cardId,ref=db.doc(`users/${a.localId}/collection/${card}`);
   await ref.update({quantity:3});

@@ -98,7 +98,7 @@ void main() {
       find.byKey(const ValueKey('pack-body-piece-world_pack')),
       findsOneWidget,
     );
-    expect(find.text('ABRINDO...'), findsOneWidget);
+    expect(find.text('ABRINDO...'), findsNothing);
     await tester.pumpAndSettle();
 
     const cardCount = 4;
@@ -195,7 +195,7 @@ void main() {
         find.byKey(ValueKey('pack-body-piece-${pack.id}')),
         findsOneWidget,
       );
-      expect(find.text('ABRINDO...'), findsOneWidget);
+      expect(find.text('ABRINDO...'), findsNothing);
       await tester.pumpAndSettle();
 
       expect(controller.packInventoryFor(pack.id).quantity, 0);

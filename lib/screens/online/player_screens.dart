@@ -67,6 +67,7 @@ const dailyRewardOdds = <int, List<int>>{
   60: [95, 5, 0, 0],
   70: [88, 8, 4, 0],
   80: [85, 9, 5, 1],
+  100: [84, 9, 5, 2],
 };
 
 String? dailyDifficulty(dynamic value) => value is String
@@ -81,7 +82,9 @@ int dailyScore(Map countries) => countries.values.fold(
       score + (dailyDifficultyPoints[dailyDifficulty(value)] ?? 0),
 );
 
-int dailyRewardMilestone(int score) => score >= 80
+int dailyRewardMilestone(int score) => score >= 100
+    ? 100
+    : score >= 80
     ? 80
     : score >= 70
     ? 70
@@ -92,7 +95,9 @@ int dailyRewardMilestone(int score) => score >= 80
 int projectedTier(Map countries, Map config, {int remainingPoints = 10}) {
   final score =
       dailyScore(countries) + (4 - countries.length) * remainingPoints;
-  return dailyRewardMilestone(score) == 80
+  return dailyRewardMilestone(score) == 100
+      ? 5
+      : dailyRewardMilestone(score) == 80
       ? 4
       : dailyRewardMilestone(score) == 70
       ? 3
@@ -276,11 +281,13 @@ class _HudLevelProgressBar extends StatelessWidget {
     required this.level,
     required this.currentXp,
     required this.nextXp,
+    this.onTap,
   });
 
   final int level;
   final num currentXp;
   final num? nextXp;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +295,7 @@ class _HudLevelProgressBar extends StatelessWidget {
         ? 1.0
         : (currentXp / nextXp!).clamp(0.0, 1.0).toDouble();
 
-    return Column(
+    final bar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -364,6 +371,17 @@ class _HudLevelProgressBar extends StatelessWidget {
         ),
       ],
     );
+    if (onTap == null) return bar;
+    return Semantics(
+      button: true,
+      label: 'Abrir recompensas de nível',
+      child: GestureDetector(
+        key: const Key('level_progress_rewards_button'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: bar,
+      ),
+    );
   }
 }
 
@@ -379,6 +397,86 @@ class PlayerLevelBar extends StatelessWidget {
       level: (progression['level'] as num?)?.toInt() ?? 1,
       currentXp: progression['currentXp'] as num? ?? 0,
       nextXp: progression['nextXp'] as num?,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const LevelRewardsScreen()),
+      ),
+    );
+  }
+}
+
+const _levelRewards = <({int level, String packId, String bonus})>[
+  (level: 5, packId: PackIds.world, bonus: '+1% de chance de carta rara'),
+  (
+    level: 10,
+    packId: PackIds.explorer,
+    bonus: '+0,5% de chance de carta épica',
+  ),
+  (
+    level: 15,
+    packId: PackIds.world,
+    bonus: '+0,2% de chance de carta lendária',
+  ),
+  (level: 20, packId: PackIds.wonders, bonus: '+1% de chance de carta rara'),
+  (
+    level: 25,
+    packId: PackIds.explorer,
+    bonus: '+0,5% de chance de carta épica',
+  ),
+  (
+    level: 30,
+    packId: PackIds.legacy,
+    bonus: '+0,3% de chance de carta lendária',
+  ),
+];
+
+class LevelRewardsScreen extends StatelessWidget {
+  const LevelRewardsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final online = AppScope.of(context).online!;
+    final progression = online.user['progression'] as Map? ?? {};
+    final level = (progression['level'] as num?)?.toInt() ?? 1;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Marcos de nível')),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Text(
+            'Nível atual: $level de 30',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 6),
+          const Text('Os bônus desbloqueados valem para todos os pacotes.'),
+          const SizedBox(height: 18),
+          for (final reward in _levelRewards)
+            Card(
+              key: Key('level_reward_${reward.level}'),
+              child: ListTile(
+                leading: CircleAvatar(
+                  child: level >= reward.level
+                      ? const Icon(Icons.check_rounded)
+                      : Text('${reward.level}'),
+                ),
+                title: Text('Nível ${reward.level} • ${reward.bonus}'),
+                subtitle: Text(
+                  '${PackCatalog.byId(reward.packId)?.name ?? reward.packId} incluído',
+                ),
+                trailing: Icon(
+                  level >= reward.level
+                      ? Icons.lock_open_rounded
+                      : Icons.lock_outline_rounded,
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text(
+            'Valores provisórios para balanceamento.',
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -466,19 +564,6 @@ class CurrentEnergyIndicator extends StatelessWidget {
   }
 }
 
-class _CompassBadge extends StatelessWidget {
-  const _CompassBadge();
-
-  @override
-  Widget build(BuildContext context) => Image.asset(
-    'assets/images/home/nickname_badge.png',
-    width: 58,
-    height: 58,
-    fit: BoxFit.contain,
-    filterQuality: FilterQuality.high,
-  );
-}
-
 class PlayerPanel extends StatefulWidget {
   const PlayerPanel({
     this.trailing,
@@ -560,38 +645,24 @@ class _PlayerPanelState extends State<PlayerPanel> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.topLeft,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(left: 22),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _WoodenNicknamePlaque(
-                                nickname: s.user['nickname']?.toString() ?? '',
-                              ),
-                              if (widget.showProgress) ...[
-                                const SizedBox(height: 3),
-                                _HudLevelProgressBar(
-                                  level: lvl,
-                                  currentXp: current,
-                                  nextXp: next,
-                                ),
-                              ],
-                            ],
+                    _WoodenNicknamePlaque(
+                      nickname: s.user['nickname']?.toString() ?? '',
+                    ),
+                    if (widget.showProgress) ...[
+                      const SizedBox(height: 3),
+                      _HudLevelProgressBar(
+                        level: lvl,
+                        currentXp: current,
+                        nextXp: next,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const LevelRewardsScreen(),
                           ),
                         ),
-                        const Positioned(
-                          left: 0,
-                          top: -4,
-                          child: _CompassBadge(),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: widget.showProgress ? 8 : 31),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
                   ],
                 ),
               ),
@@ -616,7 +687,7 @@ class _PlayerPanelState extends State<PlayerPanel> with WidgetsBindingObserver {
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: const EdgeInsets.only(left: 62, top: 4),
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
                 'Reconectando…',
                 style: TextStyle(color: Colors.amber.shade200, fontSize: 9),
@@ -698,6 +769,7 @@ const _parchmentAccent = Color(0xFF9A4F2E);
 class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
   Timer? _timer;
   bool _busy = false;
+  bool _showWeekly = false;
   String? _error;
   @override
   void initState() {
@@ -711,6 +783,35 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _requestDailyClaim(String day, int score) async {
+    if (score < 100) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const Key('daily_claim_confirmation'),
+          title: const Text('Resgatar recompensa?'),
+          content: const Text(
+            'Tem certeza que deseja coletar o seu prêmio agora? Você pode melhorar suas chances acumulando mais pontos.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CONTINUAR ACUMULANDO'),
+            ),
+            FilledButton.icon(
+              key: const Key('daily_claim_confirm_button'),
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.card_giftcard_rounded),
+              label: const Text('COLETAR AGORA'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    await _claim(day);
   }
 
   Future<void> _claim(String day) async {
@@ -729,6 +830,40 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _error = onlineError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _claimWeekly() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final packs = await AppScope.of(
+        context,
+        listen: false,
+      ).claimWeeklyRewards();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              packs.isEmpty
+                  ? 'Nenhum novo pacote semanal disponível.'
+                  : '${packs.length} pacote(s) semanal(is) recebido(s)!',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final message = onlineError(e);
+        setState(() => _error = message);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -787,21 +922,44 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
         ),
       ),
       child: Scaffold(
-        extendBodyBehindAppBar: true,
+        backgroundColor: const Color(0xFF342013),
         appBar: AppBar(title: Text(copy['title'])),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            const _ParchmentBackground(),
-            SafeArea(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(28, 64, 28, 42),
-                children: [
-                  Text(
-                    copy['objective'],
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.bold,
+        body: _ParchmentBackground(
+          child: SafeArea(
+            top: false,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
+              children: [
+                _ExplorationTabs(
+                  weeklySelected: _showWeekly,
+                  onChanged: (weekly) => setState(() => _showWeekly = weekly),
+                ),
+                const SizedBox(height: 22),
+                if (_showWeekly)
+                  _WeeklyExplorationPanel(
+                    points: s.weeklyPoints,
+                    active: s.weeklyActive,
+                    remaining: countdown(s.weeklyResetsAt - s.serverNow),
+                    busy: _busy,
+                    onClaim: _claimWeekly,
+                    claimed: {
+                      for (final value
+                          in (s.weeklyStars['claimedRewards'] as List? ??
+                              const []))
+                        (value as num).toInt(),
+                    },
+                  )
+                else ...[
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      copy['objective'],
+                      maxLines: 1,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -822,10 +980,6 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const _DailyInfoPanel(),
-                  const SizedBox(height: 18),
-                  _DailyScoreCard(score: score),
                   const SizedBox(height: 18),
                   _DailyRewardProgress(score: score),
                   const SizedBox(height: 18),
@@ -836,13 +990,10 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
                   ),
                   const SizedBox(height: 18),
                   if (ready && currentId != null) ...[
-                    FilledButton.icon(
-                      key: const Key('daily_claim_button'),
-                      onPressed: _busy ? null : () => _claim(currentId),
-                      icon: const Icon(Icons.redeem_rounded),
-                      label: Text(
-                        _busy ? copy['claiming'] : copy['readyToClaim'],
-                      ),
+                    _DailyClaimButton(
+                      busy: _busy,
+                      label: _busy ? copy['claiming'] : copy['readyToClaim'],
+                      onPressed: () => _requestDailyClaim(currentId, score),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -867,7 +1018,10 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
                     OutlinedButton(
                       onPressed: _busy
                           ? null
-                          : () => _claim(day['id'] as String),
+                          : () => _requestDailyClaim(
+                              day['id'] as String,
+                              (day['bestScore'] as num?)?.toInt() ?? 40,
+                            ),
                       child: Text(copy.previousClaim(day['id'] as String)),
                     ),
                   ],
@@ -883,58 +1037,282 @@ class _DailyExplorationScreenState extends State<DailyExplorationScreen> {
                     ),
                     child: Text(copy['openPacks']),
                   ),
+                  const SizedBox(height: 12),
+                  const _DailyInfoPanel(),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ParchmentBackground extends StatelessWidget {
-  const _ParchmentBackground();
+class _ExplorationTabs extends StatelessWidget {
+  const _ExplorationTabs({
+    required this.weeklySelected,
+    required this.onChanged,
+  });
+  final bool weeklySelected;
+  final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: const Color(0xFF342013),
-    child: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: DecoratedBox(
-          key: const Key('daily_parchment_background'),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFE1B96F),
-                Color(0xFFFFE9AD),
-                Color(0xFFF3D28B),
-                Color(0xFFD5A75C),
-              ],
-              stops: [0, .2, .78, 1],
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFF8B572A), width: 2),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black54,
-                blurRadius: 18,
-                offset: Offset(0, 7),
-              ),
-              BoxShadow(
-                color: Color(0x66FFF0C2),
-                blurRadius: 12,
-                spreadRadius: -4,
-              ),
-            ],
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(4),
+    decoration: BoxDecoration(
+      color: const Color(0x554A2D1A),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0x66704A27)),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: _ExplorationTabButton(
+            key: const Key('daily_exploration_tab'),
+            label: 'Exploração diária',
+            selected: !weeklySelected,
+            onTap: () => onChanged(false),
           ),
-          child: const CustomPaint(painter: _ParchmentPainter()),
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: _ExplorationTabButton(
+            key: const Key('weekly_exploration_tab'),
+            label: 'Exploração semanal',
+            selected: weeklySelected,
+            onTap: () => onChanged(true),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ExplorationTabButton extends StatelessWidget {
+  const _ExplorationTabButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    duration: const Duration(milliseconds: 180),
+    opacity: selected ? 1 : .48,
+    child: Material(
+      color: selected ? const Color(0xFFFFE3A2) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 5),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+          ),
         ),
       ),
     ),
+  );
+}
+
+const _weeklyRewards = <({int points, String packId})>[
+  (points: 300, packId: PackIds.world),
+  (points: 450, packId: PackIds.explorer),
+  (points: 600, packId: PackIds.wonders),
+  (points: 700, packId: PackIds.legacy),
+];
+
+class _WeeklyExplorationPanel extends StatelessWidget {
+  const _WeeklyExplorationPanel({
+    required this.points,
+    required this.active,
+    required this.remaining,
+    required this.claimed,
+    required this.busy,
+    required this.onClaim,
+  });
+  final int points;
+  final bool active;
+  final String remaining;
+  final Set<int> claimed;
+  final bool busy;
+  final VoidCallback onClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    const maximum = 700;
+    final hasAvailableReward = _weeklyRewards.any(
+      (reward) => points >= reward.points && !claimed.contains(reward.points),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Jornada da semana',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          active
+              ? 'Segunda 00h até domingo 13h • encerra em $remaining'
+              : 'Semana encerrada • próxima jornada em $remaining',
+        ),
+        const SizedBox(height: 4),
+        const Text('Até 100 pontos da Exploração Diária por dia.'),
+        const SizedBox(height: 12),
+        Container(
+          key: const Key('weekly_claim_schedule_notice'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0x99FFF0C2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD68127), width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                active ? Icons.lock_clock_rounded : Icons.lock_open_rounded,
+                color: const Color(0xFF8C4D18),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  active
+                      ? 'Os pacotes só podem ser resgatados domingo após as 13h.'
+                      : 'Resgate liberado: domingo após as 13h.',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _parchmentPanel,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0x66704A27)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.explore_rounded, color: Color(0xFFD68127)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$points / $maximum pontos',
+                      key: const Key('weekly_score'),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                minHeight: 12,
+                borderRadius: BorderRadius.circular(99),
+                value: (points / maximum).clamp(0, 1),
+                color: const Color(0xFFD68127),
+                backgroundColor: const Color(0x44704A27),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Recompensas semanais',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        for (final reward in _weeklyRewards)
+          Card(
+            color: points >= reward.points
+                ? const Color(0x99E7C675)
+                : const Color(0x66FFF0C2),
+            child: ListTile(
+              key: Key('weekly_reward_${reward.points}'),
+              leading: Icon(
+                claimed.contains(reward.points)
+                    ? Icons.inventory_2_rounded
+                    : points >= reward.points
+                    ? Icons.redeem_rounded
+                    : Icons.lock_outline_rounded,
+              ),
+              title: Text(
+                PackCatalog.byId(reward.packId)?.name ?? reward.packId,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text('${reward.points} pontos'),
+              trailing: claimed.contains(reward.points)
+                  ? const Text('RECEBIDO')
+                  : !active && points >= reward.points
+                  ? const Text('RESGATAR')
+                  : null,
+            ),
+          ),
+        if (!active && hasAvailableReward) ...[
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            key: const Key('weekly_claim_button'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(58),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            onPressed: busy ? null : onClaim,
+            icon: const Icon(Icons.card_giftcard_rounded, size: 26),
+            label: Text(busy ? 'RESGATANDO…' : 'RESGATAR PACOTES'),
+          ),
+        ],
+        const SizedBox(height: 10),
+        const Text(
+          'A primeira recompensa é liberada com 300 pontos. Os pacotes são cumulativos; com 700 pontos, você pode resgatar um de cada.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: _parchmentMuted),
+        ),
+      ],
+    );
+  }
+}
+
+class _ParchmentBackground extends StatelessWidget {
+  const _ParchmentBackground({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    key: const Key('daily_parchment_background'),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFE1B96F),
+          Color(0xFFFFE9AD),
+          Color(0xFFF3D28B),
+          Color(0xFFD5A75C),
+        ],
+        stops: [0, .2, .78, 1],
+      ),
+    ),
+    child: CustomPaint(painter: const _ParchmentPainter(), child: child),
   );
 }
 
@@ -943,40 +1321,10 @@ class _ParchmentPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final edge = Paint()
-      ..color = const Color(0x44734824)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    canvas.drawLine(const Offset(16, 30), Offset(size.width - 16, 30), edge);
-    canvas.drawLine(
-      Offset(16, size.height - 30),
-      Offset(size.width - 16, size.height - 30),
-      edge,
-    );
-
-    final rollPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0x886F421D), Color(0x22FFF0C2), Color(0x886F421D)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, 22));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(13, 13, size.width - 26, 18),
-        const Radius.circular(10),
-      ),
-      rollPaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(13, size.height - 31, size.width - 26, 18),
-        const Radius.circular(10),
-      ),
-      rollPaint,
-    );
-
     final fleck = Paint()..color = const Color(0x24704A27);
     for (var i = 0; i < 34; i++) {
       final x = 18 + ((i * 73) % (size.width - 36));
-      final y = 42 + ((i * 137) % (size.height - 84));
+      final y = 18 + ((i * 137) % (size.height - 36));
       canvas.drawCircle(Offset(x, y), i.isEven ? .8 : .45, fleck);
     }
   }
@@ -1001,51 +1349,58 @@ class _DailyCountryCard extends StatelessWidget {
     final difficulty = dailyDifficulty(value);
     final completed = difficulty != null;
     final country = CardCatalog.countryById(themeId);
-    return Container(
-      key: Key('daily_country_$themeId'),
-      constraints: const BoxConstraints(minHeight: 130),
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 10),
-      decoration: BoxDecoration(
-        color: completed ? const Color(0x55C98452) : _parchmentPanel,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: completed ? _parchmentAccent : const Color(0x66704A27),
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Container(
+        key: Key('daily_country_$themeId'),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+        decoration: BoxDecoration(
+          color: completed ? const Color(0x55C98452) : _parchmentPanel,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(
+            color: completed ? _parchmentAccent : const Color(0x66704A27),
+          ),
         ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(country?.flag ?? '🌎', style: const TextStyle(fontSize: 25)),
-          const SizedBox(height: 5),
-          Text(
-            name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              height: 1.05,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(country?.flag ?? '🌎', style: const TextStyle(fontSize: 18)),
+            const SizedBox(height: 2),
+            Flexible(
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 7),
-          Icon(
-            completed
-                ? Icons.check_circle_rounded
-                : Icons.radio_button_unchecked_rounded,
-            size: 21,
-            color: completed ? _parchmentAccent : _parchmentMuted,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            copy.difficultyName(difficulty),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: completed ? _parchmentInk : _parchmentMuted,
+            const SizedBox(height: 2),
+            Icon(
+              completed
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              size: 15,
+              color: completed ? _parchmentAccent : _parchmentMuted,
             ),
-          ),
-        ],
+            const SizedBox(height: 1),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                copy.difficultyName(difficulty),
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: completed ? _parchmentInk : _parchmentMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1125,7 +1480,7 @@ class _DailyInfoPanel extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
-              Text('80', style: TextStyle(fontWeight: FontWeight.w900)),
+              Text('100', style: TextStyle(fontWeight: FontWeight.w900)),
             ],
           ),
         ],
@@ -1134,33 +1489,64 @@ class _DailyInfoPanel extends StatelessWidget {
   }
 }
 
-class _DailyScoreCard extends StatelessWidget {
-  const _DailyScoreCard({required this.score});
-  final int score;
+class _DailyClaimButton extends StatelessWidget {
+  const _DailyClaimButton({
+    required this.busy,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool busy;
+  final String label;
+  final VoidCallback onPressed;
+
   @override
-  Widget build(BuildContext context) {
-    final copy = DailyExplorationStrings.of(context);
-    return Column(
-      children: [
-        Text(
-          copy['dailyScore'],
-          style: const TextStyle(
-            color: _parchmentMuted,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) => SizedBox(
+    height: 76,
+    child: Material(
+      color: const Color(0xFF8F4528),
+      elevation: 4,
+      shadowColor: const Color(0x8870381F),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFFFC857), width: 2),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: const Key('daily_claim_button'),
+        onTap: busy ? null : onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/images/rewards/daily_claim_gift.png',
+                key: const Key('daily_claim_gift'),
+                width: 46,
+                height: 46,
+                cacheWidth: 138,
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFFFF1C5),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .5,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        Text(
-          '$score / 80',
-          key: const Key('daily_score'),
-          style: const TextStyle(
-            fontSize: 34,
-            fontWeight: FontWeight.w900,
-            color: _parchmentAccent,
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+    ),
+  );
 }
 
 class _DailyRewardProgress extends StatelessWidget {
@@ -1187,43 +1573,18 @@ class _DailyRewardProgress extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: score / 80,
+              key: const Key('daily_reward_progress_bar'),
+              value: (score / 100).clamp(0.0, 1.0),
               minHeight: 8,
               backgroundColor: const Color(0x33704A27),
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              for (final value in [0, 40, 60, 70, 80])
-                Expanded(
-                  child: Column(
-                    children: [
-                      Icon(
-                        value == 0 ? Icons.circle : Icons.star_rounded,
-                        size: value == 0 ? 9 : 18,
-                        color: score >= value && value > 0
-                            ? _parchmentAccent
-                            : const Color(0x55704A27),
-                      ),
-                      Text(
-                        '$value',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: score >= value
-                              ? _parchmentInk
-                              : _parchmentMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          _DailyProgressMilestones(score: score),
           const SizedBox(height: 5),
           Text(
-            '$score / 80',
+            '$score / 100',
+            key: const Key('daily_score'),
             textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
@@ -1231,6 +1592,53 @@ class _DailyRewardProgress extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DailyProgressMilestones extends StatelessWidget {
+  const _DailyProgressMilestones({required this.score});
+
+  final int score;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      const markerWidth = 32.0;
+      const maximum = 100.0;
+      return SizedBox(
+        height: 31,
+        child: Stack(
+          children: [
+            for (final value in const [0, 40, 60, 70, 80, 100])
+              Positioned(
+                key: Key('daily_progress_milestone_$value'),
+                left: (constraints.maxWidth * value / maximum - markerWidth / 2)
+                    .clamp(0.0, constraints.maxWidth - markerWidth),
+                width: markerWidth,
+                child: Column(
+                  children: [
+                    Icon(
+                      value == 0 ? Icons.circle : Icons.star_rounded,
+                      size: value == 0 ? 9 : 18,
+                      color: score >= value && value > 0
+                          ? _parchmentAccent
+                          : const Color(0x55704A27),
+                    ),
+                    Text(
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: score >= value ? _parchmentInk : _parchmentMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _DailyRewardChances extends StatelessWidget {
@@ -1453,31 +1861,23 @@ class _EnergyDialogState extends State<_EnergyDialog> {
                       width: 5,
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.bolt_rounded,
-                        color: Color(0xFFFFBE2E),
-                        size: 66,
-                        shadows: [
-                          Shadow(
-                            color: Color(0xFF101417),
-                            blurRadius: 0,
-                            offset: Offset(3, 4),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${s.lives} / ${s.maxLives}',
-                        style: const TextStyle(
-                          color: Color(0xFF151A1E),
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
+                  child: FractionallySizedBox(
+                    widthFactor: .6,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _EnergyStat(
+                          icon: Icons.bolt_rounded,
+                          value: '${s.lives}',
+                          label: 'ATUAL',
                         ),
-                      ),
-                    ],
+                        _EnergyStat(
+                          icon: Icons.battery_full_rounded,
+                          value: '${s.maxLives}',
+                          label: 'MÁXIMA',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 if (widget.depleted && s.lives == 0) ...[
@@ -1567,6 +1967,59 @@ class _EnergyDialogState extends State<_EnergyDialog> {
       ),
     );
   }
+}
+
+class _EnergyStat extends StatelessWidget {
+  const _EnergyStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: const Color(0xFFFFBE2E),
+            size: 35,
+            shadows: const [
+              Shadow(
+                color: Color(0xFF101417),
+                blurRadius: 0,
+                offset: Offset(2, 2),
+              ),
+            ],
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF151A1E),
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+      Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF3F484E),
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          letterSpacing: .8,
+        ),
+      ),
+    ],
+  );
 }
 
 void showMarket(BuildContext context) => showDialog<void>(

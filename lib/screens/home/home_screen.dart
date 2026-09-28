@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -20,6 +22,13 @@ class HomeScreen extends StatelessWidget {
     final starDustCopy = StarDustStrings.of(context);
 
     final hasDailyUnclaimed = s?.unclaimedExplorations.isNotEmpty == true;
+    final unclaimedDailyScore = s?.unclaimedExplorations.fold<int>(0, (
+      highest,
+      day,
+    ) {
+      final score = (day['bestScore'] as num?)?.toInt() ?? 0;
+      return score > highest ? score : highest;
+    });
     final dailyCountries = s?.daily['countries'] as Map? ?? {};
     final hasDailyPending =
         s != null && (s.daily['claimed'] != true || dailyCountries.length < 4);
@@ -68,7 +77,7 @@ class HomeScreen extends StatelessWidget {
                           const PlayerPanel(
                             trailing: _SettingsButton(),
                             showEnergy: false,
-                            showProgress: false,
+                            showProgress: true,
                           )
                         else
                           const Align(
@@ -79,27 +88,18 @@ class HomeScreen extends StatelessWidget {
                         const SizedBox(height: 16),
 
                         // CENTRO: Título e Identidade Visual do Puzzle World
-                        const Text(
-                          'PUZZLE\nWORLD',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFFFFF4DE),
-                            fontSize: 47,
-                            height: .82,
-                            fontFamily: 'SuperBouncer',
-                            letterSpacing: 1.2,
-                            shadows: [
-                              Shadow(
-                                color: Color(0xAA6B351B),
-                                offset: Offset(0, 4),
-                                blurRadius: 1,
-                              ),
-                              Shadow(
-                                color: Color(0x99000000),
-                                offset: Offset(0, 7),
-                                blurRadius: 12,
-                              ),
-                            ],
+                        Semantics(
+                          label: 'Puzzle World',
+                          image: true,
+                          child: FractionallySizedBox(
+                            widthFactor: .86,
+                            child: Image.asset(
+                              'assets/images/home/puzzle_world_title.png',
+                              key: const Key('home_title_art'),
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
+                              excludeFromSemantics: true,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 13),
@@ -161,13 +161,7 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 7),
-
-                        const FractionallySizedBox(
-                          widthFactor: .82,
-                          child: PlayerLevelBar(),
-                        ),
-                        const SizedBox(height: 7),
+                        const SizedBox(height: 14),
 
                         // CENTRO: Botão Principal de Ação "JOGAR"
                         FractionallySizedBox(
@@ -200,11 +194,15 @@ class HomeScreen extends StatelessWidget {
                                   excludeFromSemantics: true,
                                 ),
                                 label: 'Exploração Diária',
+                                collectProgress: hasDailyUnclaimed
+                                    ? ((unclaimedDailyScore ?? 40) / 100).clamp(
+                                        .4,
+                                        1.0,
+                                      )
+                                    : null,
                                 hasNotification:
-                                    hasDailyPending || hasDailyUnclaimed,
-                                notificationColor: hasDailyUnclaimed
-                                    ? const Color(0xFFFFD54F)
-                                    : const Color(0xFFFF5252),
+                                    hasDailyPending && !hasDailyUnclaimed,
+                                notificationColor: const Color(0xFFFF5252),
                                 onPressed: () => Navigator.push(
                                   context,
                                   MaterialPageRoute<void>(
@@ -259,6 +257,11 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 8),
+                        const FractionallySizedBox(
+                          widthFactor: .5,
+                          child: _MarketShortcut(),
+                        ),
                         const SizedBox(height: 6),
                       ],
                     ),
@@ -289,14 +292,151 @@ class _SettingsButton extends StatelessWidget {
     ),
     icon: Image.asset(
       'assets/images/home/settings_wrench.png',
-      width: 48,
-      height: 48,
+      width: 32,
+      height: 32,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
       cacheWidth: 144,
       excludeFromSemantics: true,
     ),
   );
+}
+
+class _MarketShortcut extends StatefulWidget {
+  const _MarketShortcut();
+
+  @override
+  State<_MarketShortcut> createState() => _MarketShortcutState();
+}
+
+class _MarketShortcutState extends State<_MarketShortcut> {
+  static final _opensAt = DateTime(2026, 12, 1);
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _remaining(DateTime now) {
+    final difference = _opensAt.difference(now);
+    if (difference <= Duration.zero) return 'Disponível';
+    final days = difference.inDays;
+    final hours = difference.inHours.remainder(24);
+    if (days > 0) return '$days ${days == 1 ? 'dia' : 'dias'} e $hours h';
+    final minutes = difference.inMinutes.remainder(60);
+    if (difference.inHours > 0) return '${difference.inHours} h e $minutes min';
+    return '${difference.inMinutes.clamp(1, 59)} min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final available = !DateTime.now().isBefore(_opensAt);
+    return Semantics(
+      button: true,
+      label: available
+          ? 'Mercado disponível'
+          : 'Mercado, disponível em breve, ${_remaining(DateTime.now())}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const Key('home_market_shortcut'),
+          onTap: available
+              ? () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('O Mercado será apresentado em breve.'),
+                  ),
+                )
+              : null,
+          borderRadius: BorderRadius.circular(20),
+          child: Ink(
+            height: 112,
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xD9161B1D),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0x40E8C886), width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black45,
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Opacity(
+                      opacity: available ? 1 : .55,
+                      child: Image.asset(
+                        'assets/images/home/card_market_icon.png',
+                        key: const Key('home_card_market_icon'),
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        cacheWidth: 144,
+                        excludeFromSemantics: true,
+                      ),
+                    ),
+                    if (!available)
+                      const Positioned(
+                        right: -8,
+                        bottom: -2,
+                        child: Icon(
+                          Icons.lock_rounded,
+                          size: 18,
+                          color: Color(0xFFFFD36B),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'MERCADO',
+                  style: TextStyle(
+                    color: Color(0xFFFFF4DE),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.05,
+                  ),
+                ),
+                if (!available)
+                  const Text(
+                    'Disponível em breve',
+                    maxLines: 1,
+                    style: TextStyle(color: Colors.white70, fontSize: 9),
+                  ),
+                Text(
+                  _remaining(DateTime.now()),
+                  key: const Key('market-countdown'),
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Color(0xFFFFD36B),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HomeEnergyShortcut extends StatelessWidget {
@@ -382,6 +522,7 @@ class _AdventureShortcutTile extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.badgeText,
+    this.collectProgress,
     this.hasNotification = false,
     this.notificationColor,
   });
@@ -391,13 +532,16 @@ class _AdventureShortcutTile extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
   final String? badgeText;
+  final double? collectProgress;
   final bool hasNotification;
   final Color? notificationColor;
 
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: label,
+    label: collectProgress == null
+        ? label
+        : '$label, recompensa pronta para coletar',
     child: Material(
       color: Colors.transparent,
       child: InkWell(
@@ -407,9 +551,9 @@ class _AdventureShortcutTile extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 165),
           child: Ink(
-            height: 110,
+            height: 112,
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
             decoration: BoxDecoration(
               color: const Color(0xD9161B1D),
               borderRadius: BorderRadius.circular(20),
@@ -429,7 +573,16 @@ class _AdventureShortcutTile extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     icon,
-                    if (badgeText != null)
+                    if (collectProgress != null)
+                      Positioned(
+                        key: const Key('home_daily_collect_gift'),
+                        top: -25,
+                        right: -11,
+                        child: _CollectGiftIndicator(
+                          progress: collectProgress!,
+                        ),
+                      )
+                    else if (badgeText != null)
                       Positioned(
                         top: -6,
                         right: -10,
@@ -532,6 +685,58 @@ class _AdventureShortcutTile extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _CollectGiftIndicator extends StatelessWidget {
+  const _CollectGiftIndicator({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final glowSize = 24 + 26 * progress;
+    return SizedBox(
+      width: 54,
+      height: 54,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedContainer(
+            key: const Key('home_daily_collect_glow'),
+            duration: const Duration(milliseconds: 350),
+            width: glowSize,
+            height: glowSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  const Color(0xFFFFF4A3).withValues(alpha: .95),
+                  const Color(0xFFFFB300).withValues(alpha: .56),
+                  Colors.transparent,
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(
+                    0xFFFFC107,
+                  ).withValues(alpha: .35 + .45 * progress),
+                  blurRadius: 8 + 18 * progress,
+                  spreadRadius: 1 + 4 * progress,
+                ),
+              ],
+            ),
+          ),
+          Image.asset(
+            'assets/images/rewards/daily_claim_gift.png',
+            width: 42,
+            height: 42,
+            cacheWidth: 126,
+            excludeFromSemantics: true,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HomeImageShortcut extends StatelessWidget {

@@ -17,6 +17,25 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "puzzle_world/config")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "getOnlineConfig") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                result.success(
+                    mapOf(
+                        "FIREBASE_PROJECT_ID" to getString(R.string.firebase_project_id),
+                        "FIREBASE_API_KEY" to getString(R.string.firebase_api_key),
+                        "FIREBASE_APP_ID" to getString(R.string.firebase_app_id),
+                        "FIREBASE_SENDER_ID" to getString(R.string.firebase_sender_id),
+                        "PLAY_GAMES_WEB_CLIENT_ID" to getString(R.string.play_games_web_client_id),
+                        "ADMOB_ANDROID_REWARDED_ID" to getString(R.string.admob_android_rewarded_id),
+                        "ADMOB_ANDROID_INTERSTITIAL_ID" to getString(R.string.admob_android_interstitial_id),
+                        "ADMOB_ANDROID_BANNER_ID" to getString(R.string.admob_android_banner_id),
+                    )
+                )
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "puzzle_world/play_games")
             .setMethodCallHandler { call, result ->
                 if (call.method != "serverAuthCode") {

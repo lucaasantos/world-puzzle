@@ -52,7 +52,6 @@ class VictoryScreen extends StatefulWidget {
 class _VictoryScreenState extends State<VictoryScreen> {
   bool _saving = false;
   late CompletionOutcome _outcome;
-  bool _processingOutcome = false;
   String? _outcomeError;
 
   @override
@@ -61,21 +60,16 @@ class _VictoryScreenState extends State<VictoryScreen> {
     _outcome = widget.outcome;
     final future = widget.outcomeFuture;
     if (future != null) {
-      _processingOutcome = true;
       future.then<void>(
         (outcome) {
           if (!mounted) return;
-          setState(() {
-            _outcome = outcome;
-            _processingOutcome = false;
-          });
+          setState(() => _outcome = outcome);
         },
         onError: (Object _, StackTrace __) {
           if (!mounted) return;
           setState(() {
-            _processingOutcome = false;
             _outcomeError =
-                'Não foi possível sincronizar a conclusão. Seu progresso foi preservado para nova tentativa.';
+                'Não foi possível validar a conclusão. Tente novamente ao abrir o jogo.';
           });
         },
       );
@@ -216,16 +210,6 @@ class _VictoryScreenState extends State<VictoryScreen> {
                   stars: widget.result.stars,
                   outcome: _outcome,
                 ),
-                if (_processingOutcome) ...[
-                  const SizedBox(height: 10),
-                  const LinearProgressIndicator(minHeight: 3),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Salvando recompensas…',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
                 if (_outcomeError != null) ...[
                   const SizedBox(height: 10),
                   Text(

@@ -12,6 +12,7 @@ import '../../engine/jigsaw_scoring.dart';
 import '../../models/game_theme.dart';
 import '../../models/jigsaw_level.dart';
 import '../../models/puzzle_result.dart';
+import '../../widgets/ads/footer_ad_banner.dart';
 import '../../widgets/jigsaw/jigsaw_board.dart';
 import '../online/player_screens.dart';
 import '../victory/victory_screen.dart';
@@ -117,8 +118,11 @@ class _JigsawGameScreenState extends State<JigsawGameScreen>
       moves: _moves,
     );
     final result = _result(localStars, localScore);
+    final optimistic = _controller!.isOnline
+        ? _controller!.optimisticOnlineCompletion(result)
+        : const CompletionOutcome();
     final outcomeFuture = _controller!.isOnline
-        ? _finishOnlineInBackground()
+        ? _finishOnlineInBackground(optimistic)
         : _controller!.recordResult(widget.theme, result);
     if (!mounted) return;
     await Navigator.pushReplacement(
@@ -128,6 +132,7 @@ class _JigsawGameScreenState extends State<JigsawGameScreen>
           theme: widget.theme,
           level: widget.level.puzzleLevel,
           result: result,
+          outcome: optimistic,
           outcomeFuture: outcomeFuture,
           jigsawLevel: widget.level,
         ),
@@ -135,8 +140,11 @@ class _JigsawGameScreenState extends State<JigsawGameScreen>
     );
   }
 
-  Future<CompletionOutcome> _finishOnlineInBackground() async {
+  Future<CompletionOutcome> _finishOnlineInBackground(
+    CompletionOutcome optimistic,
+  ) async {
     final outcome = await _controller!.finishOnline(
+      optimistic: optimistic,
       moveCount: _moves,
       placements: _placements,
     );
@@ -372,6 +380,7 @@ class _JigsawGameScreenState extends State<JigsawGameScreen>
                 },
               ),
       ),
+      bottomNavigationBar: const FooterAdBanner(),
     ),
   );
 }

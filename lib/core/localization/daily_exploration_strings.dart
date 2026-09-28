@@ -102,6 +102,6 @@ class DailyExplorationStrings {
       ? 'Resgatar exploração anterior • $day'
       : 'Claim previous exploration • $day';
   String dailyFeedback(int points, int score) => isPortuguese
-      ? '+$points pontos na Exploração Diária • $score/80'
-      : '+$points Daily Exploration points • $score/80';
+      ? '+$points pontos na Exploração Diária • $score/100'
+      : '+$points Daily Exploration points • $score/100';
 }

@@ -1,8 +1,11 @@
 # Puzzle World — integração online
 
+O fluxo atual de desempenho, fila offline, idempotência e checklist de App Check
+está documentado em [PERFORMANCE_SECURITY.md](PERFORMANCE_SECURITY.md).
+
 ## Estado da entrega
 
-O código do aplicativo e das dez Cloud Functions está integrado. O projeto Firebase `puzzle-world-a7b7d` e o app Android já estão cadastrados; o Firestore está em São Paulo com regras e índices publicados. Functions, Play Games e AdMob ainda dependem da ativação descrita em [ONLINE_ACTIVATION_CHECKLIST.md](ONLINE_ACTIVATION_CHECKLIST.md). Sem configuração, a versão normal mostra **Serviços online em preparação**; nunca cria uma conta fictícia nem concede economia local. Os emuladores permitem validar o fluxo sem um projeto real.
+O código do aplicativo e das Cloud Functions está integrado. O projeto Firebase `puzzle-world-a7b7d` e o app Android já estão cadastrados; o Firestore está em São Paulo com regras e índices publicados. Play Games, App Check/Play Integrity e AdMob ainda dependem da ativação descrita em [ONLINE_ACTIVATION_CHECKLIST.md](ONLINE_ACTIVATION_CHECKLIST.md). Sem configuração, a versão normal mostra **Serviços online em preparação**; nunca cria uma conta fictícia nem concede economia local. Os emuladores permitem validar o fluxo sem um projeto real.
 
 O puzzle, a abertura visual de pacotes, o catálogo, a coleção e o álbum existentes foram reutilizados. O Brasil utiliza as artes existentes de Rio de Janeiro, São Paulo, Brasília e Salvador. Nenhuma carta/moldura foi recriada. Não há moedas, comércio ou transferência.
 
@@ -69,7 +72,7 @@ O teste de integração usa um projeto `demo-`, usuários temporários e acesso 
 
 1. Criar um projeto Firebase e registrar Android com o applicationId existente `com.puzzlejourney.puzzle_journey`. Adicionar os certificados SHA de teste e de distribuição corretos. Criar Firestore e habilitar Authentication, Analytics, Remote Config e App Check. Configurar o projeto para permitir publicação de Cloud Functions.
 2. No Google Play Console, configurar Play Games Services para o mesmo projeto. Criar a credencial Android e a credencial de servidor de jogo. Habilitar o provedor Play Games no Firebase Authentication com o OAuth Web Client ID correspondente. O segredo OAuth fica no console, nunca no aplicativo. Adicionar testadores antes de disponibilizar o jogo.
-3. Copiar `config/firebase.example.json` para `config/firebase.local.json` e preencher os valores públicos do app Firebase e `PLAY_GAMES_WEB_CLIENT_ID`. O app inicializa Firebase explicitamente com essas opções. Configuração nativa gerada pelo FlutterFire pode ser acrescentada conforme necessário para recursos específicos de Analytics/distribuição.
+3. Copiar `config/firebase.example.json` para `config/firebase.local.json` e preencher os valores públicos do app Firebase e `PLAY_GAMES_WEB_CLIENT_ID`. No Android, toda compilação lê esse arquivo automaticamente e incorpora os valores como recursos nativos; `--dart-define-from-file` continua aceito, mas não é mais necessário. O app inicializa Firebase explicitamente com essas opções. Configuração nativa gerada pelo FlutterFire pode ser acrescentada conforme necessário para recursos específicos de Analytics/distribuição.
 4. Definir `PLAY_GAMES_PROJECT_ID` nas propriedades Gradle locais (ID numérico do jogo). O valor padrão `0` mantém login desabilitado. O canal Android obtém um server auth code pelo SDK Play Games v2; o Flutter troca esse código por credencial Firebase. Nenhum Play Games ID vira chave de dados.
 5. Registrar App Check com Play Integrity. Em desenvolvimento com Firebase real, registrar o token de debug no console. As callable Functions exigem App Check em produção. Para iOS, há interface independente `PlayerIdentityProvider` e preparação App Attest; o provedor de autenticação iOS ainda precisa ser implementado quando a plataforma for adicionada.
 6. Publicar as regras e as Functions no projeto escolhido, explicitamente:
@@ -77,10 +80,10 @@ O teste de integração usa um projeto `demo-`, usuários temporários e acesso 
 ```powershell
 node functions/node_modules/firebase-tools/lib/bin/firebase.js login
 node functions/node_modules/firebase-tools/lib/bin/firebase.js deploy --project SEU_PROJECT_ID --only firestore:rules,firestore:indexes,functions
-flutter build apk --debug --dart-define-from-file=config/firebase.local.json
+flutter build apk --debug
 ```
 
-As regras, os índices e as dez Functions já foram publicados no projeto real. Antes de distribuição, substituir a assinatura Android de debug pela assinatura de release do proprietário.
+As regras, os índices e as Functions já foram publicados no projeto real. Antes de distribuição, substituir a assinatura Android de debug pela assinatura de release do proprietário.
 
 ## Anúncios
 

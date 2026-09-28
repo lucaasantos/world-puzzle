@@ -6,7 +6,6 @@ import '../../app/app_scope.dart';
 import '../../models/card_pack.dart';
 import '../../widgets/card_pack/pack_artwork.dart';
 import 'pack_opening_screen.dart';
-import '../online/player_screens.dart';
 
 class PackPreviewScreen extends StatefulWidget {
   const PackPreviewScreen({required this.pack, super.key});
@@ -21,6 +20,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _tearController;
   bool _opening = false;
+  bool _waitingForBackend = false;
 
   @override
   void initState() {
@@ -39,43 +39,57 @@ class _PackPreviewScreenState extends State<PackPreviewScreen>
 
   Future<void> _openPack() async {
     if (_opening) return;
-    setState(() => _opening = true);
-    PackOpenOutcome outcome;
-    try {
-      outcome = await AppScope.of(
-        context,
-        listen: false,
-      ).openPack(widget.pack.id);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _opening = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(onlineError(error))));
-      }
-      return;
-    }
+    setState(() {
+      _opening = true;
+      _waitingForBackend = false;
+    });
+    PackOpenOutcome? outcome;
+    Object? requestError;
+    var requestCompleted = false;
+    final request = AppScope.of(context, listen: false)
+        .openPack(widget.pack.id)
+        .then<void>(
+          (value) {
+            outcome = value;
+            requestCompleted = true;
+          },
+          onError: (Object error, StackTrace _) {
+            requestError = error;
+            requestCompleted = true;
+          },
+        );
+
+    await _tearController.forward();
     if (!mounted) return;
-    if (outcome.status != PackOpenStatus.success || outcome.result == null) {
-      setState(() => _opening = false);
-      final message = switch (outcome.status) {
-        PackOpenStatus.notOwned => 'Você não possui este pacote.',
-        PackOpenStatus.noCardsAvailable => 'Nenhuma carta válida disponível.',
-        _ => 'Este pacote não está disponível.',
-      };
+    if (!requestCompleted) setState(() => _waitingForBackend = true);
+    await request;
+    if (!mounted) return;
+    if (requestError != null ||
+        outcome?.status != PackOpenStatus.success ||
+        outcome?.result == null) {
+      _tearController.reset();
+      setState(() {
+        _opening = false;
+        _waitingForBackend = false;
+      });
+      final message = requestError != null
+          ? 'Não foi possível abrir o pacote. Tente novamente.'
+          : switch (outcome!.status) {
+              PackOpenStatus.notOwned => 'Você não possui este pacote.',
+              PackOpenStatus.noCardsAvailable =>
+                'Nenhuma carta válida disponível.',
+              _ => 'Este pacote não está disponível.',
+            };
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
-
-    await _tearController.forward();
-    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 260),
         pageBuilder: (_, animation, secondaryAnimation) =>
-            PackOpeningScreen(pack: widget.pack, result: outcome.result!),
+            PackOpeningScreen(pack: widget.pack, result: outcome!.result!),
         transitionsBuilder: (_, animation, secondaryAnimation, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
@@ -129,16 +143,20 @@ class _PackPreviewScreenState extends State<PackPreviewScreen>
                           ? SizedBox(
                               key: ValueKey('opening-${widget.pack.id}'),
                               height: 52,
-                              child: Center(
-                                child: Text(
-                                  'ABRINDO...',
-                                  style: TextStyle(
-                                    color: foreground,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.1,
-                                  ),
-                                ),
-                              ),
+                              child: _waitingForBackend
+                                  ? Center(
+                                      child: SizedBox.square(
+                                        dimension: 24,
+                                        child: CircularProgressIndicator(
+                                          key: ValueKey(
+                                            'pack-backend-wait-${widget.pack.id}',
+                                          ),
+                                          strokeWidth: 2.5,
+                                          color: foreground,
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
                             )
                           : Row(
                               key: ValueKey('pack-actions-${widget.pack.id}'),

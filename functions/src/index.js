@@ -4,7 +4,7 @@ import {onCall, onRequest, HttpsError} from 'firebase-functions/v2/https';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {economyConfig} from './config.js';
-import {blocksLimits, dailyCycle, dailyDifficulty, difficulties, explorationScore, explorationTier, jigsawLimits, levelFor, normalizeWorldCoinEconomy, regenerate, shuffledBoard, verifyBlocksSolution, verifyJigsawSolution, verifySolution, weeklyCycle, weighted, packTypes} from './economy.js';
+import {blocksLimits, boostedRarityWeights, dailyCountryPool, dailyCycle, dailyDifficulty, difficulties, explorationScore, explorationTier, jigsawLimits, levelFor, normalizeWorldCoinEconomy, regenerate, shuffledBoard, verifyBlocksSolution, verifyJigsawSolution, verifySolution, weeklyCycle, weighted, packTypes} from './economy.js';
 import {verifyAdCallback} from './ssv.js';
 
 initializeApp();
@@ -24,7 +24,6 @@ function callable(action) {
   });
 }
 function view(user, config) { return {...user, progression: levelFor(user.totalXp, config)}; }
-const dailyCountryPool = ['brazil', 'japan', 'egypt', 'greece'];
 const dailyCountryIds = config => dailyCountryPool.slice(0, config.requiredCountries);
 function newDaily(cycleId, config) {
   return {id:cycleId,countryIds:dailyCountryIds(config),countries:{},bestScore:0,claimed:false,config};
@@ -41,7 +40,7 @@ function normalizeDaily(daily, config) {
   return {...daily,countryIds,countries,bestScore:explorationScore(countries,config),config};
 }
 function newWeekly(weekId) {
-  return {id:weekId,stages:{},totalStars:0,stagesCompleted:0};
+  return {id:weekId,stages:{},dailyScores:{},totalStars:0,totalPoints:0,stagesCompleted:0,claimedRewards:[]};
 }
 function worldCoinView(user, cycleId, config) {
   return {...user,...normalizeWorldCoinEconomy(user,cycleId,config)};
@@ -66,11 +65,18 @@ export const createProfile = callable(async (uid, data, config) => {
 export const syncPlayer = callable(async (uid, data, config) => {
   const now=Date.now(), cycle=dailyCycle(now,config), week=weeklyCycle(now,config);
   return db.runTransaction(async tx => {
-    const [snap, daily, weekly] = await tx.getAll(userRef(uid),sub(uid,'dailyExploration',cycle.id),sub(uid,'weeklyStarProgress',week.id));
+    const weeklyRef=sub(uid,'weeklyStarProgress',week.id);
+    const [snap, daily, weekly] = await tx.getAll(userRef(uid),sub(uid,'dailyExploration',cycle.id),weeklyRef);
     if(!snap.exists) return {needsProfile:true,serverNow:now,config};
     const previous=snap.data(), user=worldCoinView({...previous,...regenerate(previous,now,config)},cycle.id,config);
+    const dailyState=daily.exists?normalizeDaily(daily.data(),config):newDaily(cycle.id,config);
+    const weeklyState=weekly.exists?weekly.data():newWeekly(week.id);
+    weeklyState.dailyScores=weeklyState.dailyScores??{};
+    if(week.active) weeklyState.dailyScores[cycle.id]=Math.min(100,dailyState.bestScore);
+    weeklyState.totalPoints=Math.min(700,Object.values(weeklyState.dailyScores).reduce((sum,value)=>sum+Math.min(100,Math.max(0,value)),0));
     tx.update(userRef(uid),{lives:user.lives,lifeAnchor:user.lifeAnchor,worldCoins:user.worldCoins,worldCoinRewardAds:user.worldCoinRewardAds});
-    return {user:view({...user,starDustBalance:Math.min(config.starDustMaximum,user.starDustBalance??0)},config),daily:daily.exists?normalizeDaily(daily.data(),config):newDaily(cycle.id,config),weeklyStars:weekly.exists?weekly.data():newWeekly(week.id),serverNow:now,resetsAt:cycle.resetsAt,weeklyResetsAt:week.resetsAt,config,regenerated:user.lives-previous.lives};
+    tx.set(weeklyRef,weeklyState);
+    return {user:view({...user,starDustBalance:Math.min(config.starDustMaximum,user.starDustBalance??0)},config),daily:dailyState,weeklyStars:weeklyState,serverNow:now,resetsAt:cycle.resetsAt,weeklyResetsAt:week.resetsAt,weeklyEndsAt:week.endsAt,weeklyStartsAt:week.start,weeklyActive:week.active,config,regenerated:user.lives-previous.lives};
   });
 });
 
@@ -102,7 +108,7 @@ export const startAttempt = callable(async (uid,data,config) => {
   });
 });
 
-export const finishAttempt = callable(async (uid,data,config) => {
+const finishAttemptHandler = async (uid,data,config) => {
   const attemptId=id(data.attemptId), now=Date.now(), cycle=dailyCycle(now,config), week=weeklyCycle(now,config);
   return db.runTransaction(async tx => {
     const weeklyRef=sub(uid,'weeklyStarProgress',week.id);
@@ -134,6 +140,7 @@ export const finishAttempt = callable(async (uid,data,config) => {
     if(stars>previousWeeklyStars) weekly.stages[weeklyKey]=stars;
     weekly.totalStars=Object.values(weekly.stages).reduce((sum,value)=>sum+value,0);
     weekly.stagesCompleted=Object.keys(weekly.stages).length;
+    weekly.claimedRewards=Array.isArray(weekly.claimedRewards)?weekly.claimedRewards:[];
     const starDustBefore=Math.min(config.starDustMaximum,user.starDustBalance??0);
     const starDustEarned=Math.min(weeklyImprovement,config.starDustMaximum-starDustBefore);
     const starDustBalance=starDustBefore+starDustEarned;
@@ -148,23 +155,37 @@ export const finishAttempt = callable(async (uid,data,config) => {
     }
     daily.bestScore=explorationScore(daily.countries,config);
     const dailyPointsEarned=daily.bestScore-previousScore;
+    weekly.dailyScores=weekly.dailyScores??{};
+    if(week.active) weekly.dailyScores[cycle.id]=Math.min(100,daily.bestScore);
+    weekly.totalPoints=Math.min(700,Object.values(weekly.dailyScores).reduce((sum,value)=>sum+Math.min(100,Math.max(0,value)),0));
     const milestones=config.milestones.filter(m=>m.enabled && m.level>before.level && m.level<=after.level);
-    const receipts = milestones.length ? await tx.getAll(...milestones.map(m=>sub(uid,'rewards',`level_${m.level}`))) : [];
+    const rewardRefs=milestones.map(m=>sub(uid,'rewards',`level_${m.level}`));
+    const receipts = rewardRefs.length ? await tx.getAll(...rewardRefs) : [];
     for(let i=0;i<milestones.length;i++) {
       if(receipts[i].exists) continue;
       const m=milestones[i], key=`level_${m.level}`;
       tx.create(sub(uid,'rewards',key),{type:'level',level:m.level,packType:m.packType,at:now});
       tx.create(sub(uid,'packs',key),{packType:m.packType,opened:false,earnedAt:now});
     }
-    const result={xp:attempt.config.xp[attempt.difficulty],level:after.level,levelUp:after.level>before.level,stars,score,elapsedSeconds:elapsed,dailyId:cycle.id,dailyProgress:Object.keys(daily.countries).length,dailyScore:daily.bestScore,dailyPreviousScore:previousScore,dailyPointsEarned,explorationReady:!daily.claimed&&daily.bestScore>=config.dailyRewardMilestones[0],starDustEarned,starDustPotential:weeklyImprovement,starDustBefore,starDustBalance,starDustFull:starDustBalance>=config.starDustMaximum,weeklyBestStars:weekly.stages[weeklyKey],newWeeklyRecord:stars>previousWeeklyStars,isNewRecord:!old || elapsed<old.bestTimeSeconds || moveCount<old.bestMoves || score>(old.bestScore??0)};
+    const result={matchId:attemptId,xp:attempt.config.xp[attempt.difficulty],level:after.level,levelUp:after.level>before.level,stars,score,elapsedSeconds:elapsed,dailyId:cycle.id,dailyProgress:Object.keys(daily.countries).length,dailyScore:daily.bestScore,dailyPreviousScore:previousScore,dailyPointsEarned,explorationReady:!daily.claimed&&daily.bestScore>=config.dailyRewardMilestones[0],starDustEarned,starDustPotential:weeklyImprovement,starDustBefore,starDustBalance,starDustFull:starDustBalance>=config.starDustMaximum,weeklyBestStars:weekly.stages[weeklyKey],newWeeklyRecord:stars>previousWeeklyStars,isNewRecord:!old || elapsed<old.bestTimeSeconds || moveCount<old.bestMoves || score>(old.bestScore??0)};
     tx.update(userRef(uid),{totalXp,starDustBalance,puzzlesCompleted:user.puzzlesCompleted+1,countriesExplored:[...new Set([...user.countriesExplored,attempt.countryId])],activeAttempt:null});
     tx.update(sub(uid,'attempts',attemptId),{state:'completed',completedAt:now,result});
     tx.set(progressRef,{levelId:attempt.levelId,gameMode:attempt.gameMode,difficulty:attempt.difficulty,bestTimeSeconds:Math.min(old?.bestTimeSeconds??elapsed,elapsed),bestMoves:Math.min(old?.bestMoves??moveCount,moveCount),bestScore:Math.max(old?.bestScore??0,score),stars:Math.max(old?.stars??0,stars),completions:(old?.completions??0)+1,firstCompletedAt:old?.firstCompletedAt??new Date(now).toISOString(),bestResultAt:new Date(now).toISOString()});
     tx.set(sub(uid,'dailyExploration',cycle.id),daily);
     tx.set(weeklyRef,weekly);
+    tx.create(sub(uid,'economyTransactions',`match_${attemptId}`),{
+      transactionId:`match_${attemptId}`,userId:uid,type:'MATCH_RESULT',
+      amount:starDustEarned,referenceId:attemptId,status:'committed',
+      createdAt:Timestamp.fromMillis(now),
+      metadata:{xp:result.xp,stars,dailyPointsEarned},
+    });
     return result;
   });
-});
+};
+
+// New clients use the consolidated name; finishAttempt remains for older APKs.
+export const submitMatchResult = callable(finishAttemptHandler);
+export const finishAttempt = callable(finishAttemptHandler);
 
 export const spendStarDust = callable(async(uid,data,config) => {
   const requestId=id(data.requestId), amount=data.amount;
@@ -215,18 +236,49 @@ export const claimExploration = callable(async(uid,data,config) => {
   });
 });
 
-export const openPack = callable(async(uid,data) => {
-  const key=id(data.packInstanceId), now=Date.now();
+export const claimWeeklyRewards = callable(async(uid,data,config) => {
+  const now=Date.now(), week=weeklyCycle(now,config);
+  if(week.active) fail('failed-precondition','Os pacotes semanais ficam disponíveis domingo após as 13h.');
   return db.runTransaction(async tx=>{
-    const [us,ps]=await tx.getAll(userRef(uid),sub(uid,'packs',key));
+    const weeklyRef=sub(uid,'weeklyStarProgress',week.id);
+    const [us,ws]=await tx.getAll(userRef(uid),weeklyRef);
+    requireUser(us);
+    if(!ws.exists) fail('failed-precondition','Jornada semanal indisponível.');
+    const weekly=ws.data(), claimed=Array.isArray(weekly.claimedRewards)?weekly.claimedRewards:[];
+    const eligible=config.weeklyRewards.filter(r=>r.points<=weekly.totalPoints && !claimed.includes(r.points));
+    const receipts=eligible.length?await tx.getAll(...eligible.map(r=>sub(uid,'rewards',`weekly_${week.id}_${r.points}`))):[];
+    for(let i=0;i<eligible.length;i++) {
+      const reward=eligible[i], key=`weekly_${week.id}_${reward.points}`;
+      if(!receipts[i].exists) {
+        tx.create(sub(uid,'rewards',key),{type:'weekly',weekId:week.id,points:reward.points,packType:reward.packType,at:now});
+        tx.create(sub(uid,'packs',key),{packType:reward.packType,opened:false,earnedAt:now});
+      }
+      claimed.push(reward.points);
+    }
+    tx.update(weeklyRef,{claimedRewards:claimed});
+    return {weekId:week.id,packTypes:eligible.map(r=>r.packType),claimedRewards:claimed};
+  });
+});
+
+export const openPack = callable(async(uid,data,config) => {
+  const key=id(data.packInstanceId), openingId=id(data.openingId??data.packInstanceId), now=Date.now();
+  return db.runTransaction(async tx=>{
+    const openingRef=sub(uid,'packOpenings',openingId);
+    const [us,ps,os]=await tx.getAll(userRef(uid),sub(uid,'packs',key),openingRef);
     const user=requireUser(us), pack=ps.data();
+    if(os.exists) {
+      if(os.data().packInstanceId!==key) fail('invalid-argument','Abertura incompatível.');
+      return os.data().result;
+    }
     if(!pack) fail('not-found','Pacote não encontrado.');
     if(pack.opened) return pack.result;
     const definition=catalog.packs[pack.packType];
     if(!definition) fail('failed-precondition','Pacote indisponível.');
-    const rarities=Object.keys(definition.weights).filter(r=>catalog.cards.some(c=>c.rarity===r));
+    const progression=levelFor(user.totalXp,config);
+    const weights=boostedRarityWeights(definition.weights,progression.level,config);
+    const rarities=Object.keys(weights).filter(r=>catalog.cards.some(c=>c.rarity===r));
     const cards=Array.from({length:definition.count},()=>{
-      const rarity=rarities[weighted(rarities.map(r=>definition.weights[r]))];
+      const rarity=rarities[weighted(rarities.map(r=>weights[r]))];
       const pool=catalog.cards.filter(c=>c.rarity===rarity);
       return pool[weighted(pool.map(()=>1))];
     });
@@ -239,8 +291,14 @@ export const openPack = callable(async(uid,data) => {
       return {cardId:c.id,isNew,resultingQuantity:e.quantity,wasAlreadyPasted:e.pastedInAlbum,rarity:c.rarity};
     });
     for(const c of unique) tx.set(sub(uid,'collection',c),entries[c]);
-    const result={packId:pack.packType,cards:rewards};
-    tx.update(sub(uid,'packs',key),{opened:true,openedAt:now,result});
+    const result={openingId,packInstanceId:key,packId:pack.packType,cards:rewards};
+    tx.update(sub(uid,'packs',key),{opened:true,openingId,openedAt:now,result});
+    tx.create(openingRef,{openingId,packInstanceId:key,status:'committed',createdAt:Timestamp.fromMillis(now),result});
+    tx.create(sub(uid,'economyTransactions',`pack_${openingId}`),{
+      transactionId:`pack_${openingId}`,userId:uid,type:'PACK_OPEN',amount:cards.length,
+      referenceId:key,status:'committed',createdAt:Timestamp.fromMillis(now),
+      metadata:{packType:pack.packType,cardIds:cards.map(card=>card.id)},
+    });
     tx.update(userRef(uid),{cardsReceived:user.cardsReceived+cards.length});
     return result;
   });

@@ -30,13 +30,19 @@ void main() {
           theme: theme,
           level: level,
           result: result,
+          outcome: const CompletionOutcome(
+            xpEarned: 25,
+            dailyPointsEarned: 10,
+            dailyScore: 40,
+          ),
           outcomeFuture: completion.future,
         ),
       ),
     );
 
     expect(find.text('FASE CONCLUÍDA'), findsOneWidget);
-    expect(find.text('Salvando recompensas…'), findsOneWidget);
+    expect(find.text('Salvando recompensas…'), findsNothing);
+    expect(find.text('+25 XP'), findsOneWidget);
 
     completion.complete(
       const CompletionOutcome(
@@ -48,8 +54,6 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Salvando recompensas…'), findsNothing);
-    expect(find.text('+25 XP'), findsOneWidget);
     expect(find.text('NOVO RECORDE!'), findsOneWidget);
   });
 }

@@ -172,6 +172,12 @@ class AppController extends ChangeNotifier {
     return type;
   });
 
+  Future<List<String>> claimWeeklyRewards() => _runStateMutation(() async {
+    final types = await online!.claimWeeklyRewards();
+    await refreshOnline();
+    return types;
+  });
+
   Future<int> spendStarDust(int amount) => _runStateMutation(() async {
     final balance = await online!.spendStarDust(amount);
     notifyListeners();
@@ -184,7 +190,148 @@ class AppController extends ChangeNotifier {
     return result;
   });
 
+  CompletionOutcome optimisticOnlineCompletion(PuzzleResult result) {
+    final service = online!;
+    final currentAttempt = service.attempt;
+    if (currentAttempt == null) return const CompletionOutcome();
+    final country = currentAttempt['countryId'] as String;
+    final levelId = currentAttempt['levelId'] as String;
+    final wasWallpaperUnlocked = isWallpaperUnlocked(country);
+    final gameMode = currentAttempt['gameMode'] as String? ?? result.gameMode;
+    final difficulty =
+        currentAttempt['difficulty'] as String? ?? result.difficulty;
+    final previous = service.progress[levelId];
+    final isNewRecord =
+        previous == null ||
+        result.elapsedSeconds < previous.bestTimeSeconds ||
+        result.moves < previous.bestMoves ||
+        result.score > previous.bestScore;
+
+    final attemptConfig = currentAttempt['config'] as Map? ?? const {};
+    final xpConfig = attemptConfig['xp'] as Map? ?? const {};
+    final xpEarned = (xpConfig[difficulty] as num?)?.toInt() ?? 0;
+    service.user['totalXp'] =
+        ((service.user['totalXp'] as num?)?.toInt() ?? 0) + xpEarned;
+
+    final dailyCountries = Map<String, dynamic>.from(
+      service.daily['countries'] as Map? ?? const {},
+    );
+    final dailyCountryIds = (service.daily['countryIds'] as List? ?? const [])
+        .cast<String>();
+    final dailyPointsConfig = service.config['dailyPoints'] as Map? ?? const {};
+    final newDailyPoints =
+        (dailyPointsConfig[difficulty] as num?)?.toInt() ?? 0;
+    final previousCountry = dailyCountries[country] as Map?;
+    final previousDailyPoints =
+        (previousCountry?['bestPoints'] as num?)?.toInt() ?? 0;
+    var dailyPointsEarned = 0;
+    if (dailyCountryIds.contains(country) &&
+        newDailyPoints > previousDailyPoints) {
+      dailyCountries[country] = {
+        'completed': true,
+        'bestDifficulty': difficulty,
+        'bestPoints': newDailyPoints,
+      };
+      dailyPointsEarned = newDailyPoints - previousDailyPoints;
+    }
+    final dailyScore = dailyCountries.values.fold<int>(
+      0,
+      (sum, value) => sum + ((value as Map)['bestPoints'] as num? ?? 0).toInt(),
+    );
+    service.daily = {
+      ...service.daily,
+      'countries': dailyCountries,
+      'bestScore': dailyScore,
+    };
+
+    final stages = Map<String, dynamic>.from(
+      service.weeklyStars['stages'] as Map? ?? const {},
+    );
+    final weeklyKey = '$gameMode:$country:$levelId';
+    final previousWeeklyStars = (stages[weeklyKey] as num?)?.toInt() ?? 0;
+    final starDustPotential = result.stars > previousWeeklyStars
+        ? result.stars - previousWeeklyStars
+        : 0;
+    if (result.stars > previousWeeklyStars) stages[weeklyKey] = result.stars;
+    final starDustBefore = service.starDustBalance;
+    final starDustMaximum =
+        (service.config['starDustMaximum'] as num?)?.toInt() ?? 100;
+    final starDustEarned = starDustPotential
+        .clamp(0, starDustMaximum - starDustBefore)
+        .toInt();
+    final starDustBalance = starDustBefore + starDustEarned;
+    service.user['starDustBalance'] = starDustBalance;
+    service.weeklyStars = {
+      ...service.weeklyStars,
+      'stages': stages,
+      'totalStars': stages.values.fold<int>(
+        0,
+        (sum, value) => sum + (value as num).toInt(),
+      ),
+      'stagesCompleted': stages.length,
+    };
+
+    service.progress[levelId] = PuzzleProgress(
+      levelId: levelId,
+      bestTimeSeconds: previous == null
+          ? result.elapsedSeconds
+          : result.elapsedSeconds < previous.bestTimeSeconds
+          ? result.elapsedSeconds
+          : previous.bestTimeSeconds,
+      bestMoves: previous == null
+          ? result.moves
+          : result.moves < previous.bestMoves
+          ? result.moves
+          : previous.bestMoves,
+      stars: previous == null || result.stars > previous.stars
+          ? result.stars
+          : previous.stars,
+      completions: (previous?.completions ?? 0) + 1,
+      firstCompletedAt: previous?.firstCompletedAt ?? result.completedAt,
+      bestResultAt: result.completedAt,
+      gameMode: gameMode,
+      difficulty: difficulty,
+      bestScore: previous == null || result.score > previous.bestScore
+          ? result.score
+          : previous.bestScore,
+    );
+    _applyOnline();
+
+    GameTheme? theme;
+    for (final candidate in gameThemes) {
+      if (candidate.id == country) {
+        theme = candidate;
+        break;
+      }
+    }
+    final wallpaperJustUnlocked =
+        theme != null &&
+        !wasWallpaperUnlocked &&
+        theme.levels.every(
+          (level) =>
+              level.id == levelId || service.progress.containsKey(level.id),
+        );
+    return CompletionOutcome(
+      isNewRecord: isNewRecord,
+      wallpaperJustUnlocked: wallpaperJustUnlocked,
+      xpEarned: xpEarned,
+      dailyPointsEarned: dailyPointsEarned,
+      dailyScore: dailyScore,
+      starDustEarned: starDustEarned,
+      starDustPotential: starDustPotential,
+      starDustBefore: starDustBefore,
+      starDustBalance: starDustBalance,
+      weeklyBestStars: result.stars > previousWeeklyStars
+          ? result.stars
+          : previousWeeklyStars,
+      newWeeklyRecord: result.stars > previousWeeklyStars,
+      starDustFull: starDustBalance >= starDustMaximum,
+      starDustTracked: true,
+    );
+  }
+
   Future<CompletionOutcome> finishOnline({
+    required CompletionOutcome optimistic,
     int? moveCount,
     List<int>? placements,
     int? blocksLines,
@@ -213,6 +360,7 @@ class AppController extends ChangeNotifier {
       blocksLines: blocksLines,
       blocksScore: blocksScore,
     );
+    if (result == null) return optimistic;
     unawaited(refreshOnline().catchError((Object _) {}));
     unawaited(ads.onLevelCompleted().catchError((Object _) {}));
     return CompletionOutcome(
@@ -620,6 +768,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    online?.dispose();
     ads.dispose();
     audio.dispose();
     super.dispose();

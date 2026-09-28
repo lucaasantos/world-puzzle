@@ -13,6 +13,10 @@ class AdsConfig {
     'ADMOB_ANDROID_INTERSTITIAL_ID',
     defaultValue: kDebugMode ? androidInterstitialTestId : '',
   );
+  static const androidBannerId = String.fromEnvironment(
+    'ADMOB_ANDROID_BANNER_ID',
+    defaultValue: kDebugMode ? androidBannerTestId : '',
+  );
   static const iosRewardedId = String.fromEnvironment(
     'ADMOB_IOS_REWARDED_ID',
     defaultValue: kDebugMode ? iosRewardedTestId : '',
@@ -21,9 +25,15 @@ class AdsConfig {
     'ADMOB_IOS_INTERSTITIAL_ID',
     defaultValue: kDebugMode ? iosInterstitialTestId : '',
   );
+  static const iosBannerId = String.fromEnvironment(
+    'ADMOB_IOS_BANNER_ID',
+    defaultValue: kDebugMode ? iosBannerTestId : '',
+  );
   static const androidRewardedTestId = 'ca-app-pub-3940256099942544/5224354917';
   static const androidInterstitialTestId =
       'ca-app-pub-3940256099942544/1033173712';
+  static const androidBannerTestId = 'ca-app-pub-3940256099942544/6300978111';
   static const iosRewardedTestId = 'ca-app-pub-3940256099942544/1712485313';
   static const iosInterstitialTestId = 'ca-app-pub-3940256099942544/4411468910';
+  static const iosBannerTestId = 'ca-app-pub-3940256099942544/2934735716';
 }

@@ -14,6 +14,7 @@ import '../../models/game_theme.dart';
 import '../../models/puzzle_level.dart';
 import '../../models/puzzle_result.dart';
 import '../../models/saved_game.dart';
+import '../../widgets/ads/footer_ad_banner.dart';
 import '../../widgets/puzzle_board/puzzle_board.dart';
 import '../victory/victory_screen.dart';
 import '../online/player_screens.dart';
@@ -357,8 +358,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       ),
       completedAt: DateTime.now(),
     );
+    final optimistic = _controller!.isOnline
+        ? _controller!.optimisticOnlineCompletion(result)
+        : const CompletionOutcome();
     final outcomeFuture = _controller!.isOnline
-        ? _finishOnlineInBackground()
+        ? _finishOnlineInBackground(optimistic)
         : _controller!.recordResult(widget.theme, result);
     if (!mounted) return;
     await Navigator.pushReplacement(
@@ -368,14 +372,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           theme: widget.theme,
           level: _level,
           result: result,
+          outcome: optimistic,
           outcomeFuture: outcomeFuture,
         ),
       ),
     );
   }
 
-  Future<CompletionOutcome> _finishOnlineInBackground() async {
-    final outcome = await _controller!.finishOnline();
+  Future<CompletionOutcome> _finishOnlineInBackground(
+    CompletionOutcome optimistic,
+  ) async {
+    final outcome = await _controller!.finishOnline(optimistic: optimistic);
     _controller!.online!.attempt = null;
     _controller!.online!.attemptMoves = [];
     await _controller!.online!.saveJournal();
@@ -766,6 +773,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+      bottomNavigationBar: const FooterAdBanner(),
     );
     if (japanPalette == null) return scaffold;
 

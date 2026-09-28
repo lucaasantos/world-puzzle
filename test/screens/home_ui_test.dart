@@ -52,6 +52,54 @@ class _TestOnline extends OnlineGameService {
 
 void main() {
   testWidgets(
+    'completed daily exploration shows only a score-scaled gift glow',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(411, 868));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final online = _TestOnline()
+        ..unclaimedExplorations = [
+          {'id': '2026-09-17', 'bestScore': 50, 'claimed': false},
+        ];
+      final controller = AppController(
+        repository: _MemoryRepo(),
+        ads: AdsService(),
+        audio: AudioService(),
+        haptics: HapticsService(),
+        wallpaper: _MockWallpaper(),
+        online: online,
+      );
+
+      await tester.pumpWidget(
+        AppScope(
+          controller: controller,
+          child: MaterialApp(theme: AppTheme.dark, home: const HomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('home_daily_collect_gift')), findsOneWidget);
+      expect(find.text('COLETAR'), findsNothing);
+      final mediumGlow = tester.getSize(
+        find.byKey(const Key('home_daily_collect_glow')),
+      );
+
+      online.unclaimedExplorations = [
+        {'id': '2026-09-17', 'bestScore': 100, 'claimed': false},
+      ];
+      await controller.refreshOnline();
+      await tester.pumpAndSettle();
+      final maximumGlow = tester.getSize(
+        find.byKey(const Key('home_daily_collect_glow')),
+      );
+      expect(maximumGlow.width, greaterThan(mediumGlow.width));
+      expect(tester.takeException(), isNull);
+
+      controller.dispose();
+    },
+  );
+
+  testWidgets(
     'HomeScreen contains new HUD, Jogar button, and adventure shortcuts',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -81,17 +129,33 @@ void main() {
       // 2. Level and XP bar
       expect(find.text('Nível 12'), findsOneWidget);
       expect(find.text('750 / 1000 XP'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName ==
+                  'assets/images/home/nickname_badge.png',
+        ),
+        findsNothing,
+      );
+      expect(
+        tester.getBottomLeft(find.text('LucasWorld')).dy,
+        lessThan(tester.getTopLeft(find.text('Nível 12')).dy),
+      );
 
       // 3. Energy indicator
       expect(find.text('3'), findsOneWidget);
       expect(find.byKey(const Key('home_energy_shortcut')), findsOneWidget);
       expect(find.text('ENERGIAS'), findsOneWidget);
+      expect(find.byKey(const Key('home_title_art')), findsOneWidget);
+      expect(find.text('PUZZLE\nWORLD'), findsNothing);
       expect(find.text('JOGUE  •  DESCUBRA  •  COLECIONE'), findsOneWidget);
       expect(
-        tester
-            .getBottomRight(find.byKey(const Key('home_primary_shortcuts')))
-            .dy,
-        lessThan(tester.getTopLeft(find.text('Nível 12')).dy),
+        tester.getBottomLeft(find.text('Nível 12')).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('home_primary_shortcuts'))).dy,
+        ),
       );
 
       await tester.tap(find.byKey(const Key('home_energy_shortcut')));
@@ -118,6 +182,8 @@ void main() {
       expect(find.text('Star Dust'), findsOneWidget);
       expect(find.byKey(const Key('home_packs_shortcut')), findsOneWidget);
       expect(find.text('Pacotes'), findsOneWidget);
+      expect(find.byKey(const Key('home_card_market_icon')), findsOneWidget);
+      expect(find.byIcon(Icons.storefront_rounded), findsNothing);
 
       // Persistent, tappable World Coin balance opens the voluntary ad flow.
       expect(

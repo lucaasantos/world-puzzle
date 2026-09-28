@@ -1,7 +1,9 @@
 import 'dart:math';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:puzzle_journey/engine/jigsaw_engine.dart';
+import 'package:puzzle_journey/engine/jigsaw_geometry.dart';
 
 void main() {
   test('all configured grids generate unique complete piece sets', () {
@@ -89,4 +91,23 @@ void main() {
       expect(engine.pieces.every((piece) => piece.isInTray), isTrue);
     },
   );
+
+  test('rounded tabs use the same depth on rectangular pieces', () {
+    final piece = JigsawPieceState(
+      id: 0,
+      row: 1,
+      column: 1,
+      top: JigsawEdge.tab,
+      right: JigsawEdge.tab,
+      bottom: JigsawEdge.tab,
+      left: JigsawEdge.tab,
+    );
+    const size = Size(176, 126);
+    final bounds = JigsawGeometry.pathFor(piece, size, padding: 18).getBounds();
+
+    expect(bounds.left, closeTo(0, .001));
+    expect(bounds.top, closeTo(0, .001));
+    expect(bounds.right, closeTo(size.width, .001));
+    expect(bounds.bottom, closeTo(size.height, .001));
+  });
 }

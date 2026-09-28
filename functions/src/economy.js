@@ -8,12 +8,25 @@ export const defaults = {
   thresholds: [1.5, 2, 2.5],
   // Very Hard is deliberately isolated so Live Ops can rebalance it later.
   dailyPoints: {easy: 10, medium: 15, hard: 20, veryHard: 25},
-  dailyRewardMilestones: [40, 60, 70, 80],
+  dailyRewardMilestones: [40, 60, 70, 80, 100],
   starDustMaximum: 100,
   worldCoin: {rewardedAdAmount: 1, dailyAdLimit: 10},
   // Firestore does not support arrays nested directly in arrays.
-  packOdds: {0: [100, 0, 0, 0], 1: [95, 5, 0, 0], 2: [88, 8, 4, 0], 3: [85, 9, 5, 1]},
-  milestones: [5, 10, 15, 20, 25, 30].map(level => ({level, enabled: false, packType: null})),
+  packOdds: {0: [100, 0, 0, 0], 1: [95, 5, 0, 0], 2: [88, 8, 4, 0], 3: [85, 9, 5, 1], 4: [84, 9, 5, 2]},
+  weeklyRewards: [
+    {points: 300, packType: 'world_pack'},
+    {points: 450, packType: 'explorer_pack'},
+    {points: 600, packType: 'tier3_pack'},
+    {points: 700, packType: 'tier4_pack'},
+  ],
+  milestones: [
+    {level: 5, enabled: true, packType: 'world_pack', bonuses: {rare: 1}},
+    {level: 10, enabled: true, packType: 'explorer_pack', bonuses: {epic: .5}},
+    {level: 15, enabled: true, packType: 'world_pack', bonuses: {legendary: .2}},
+    {level: 20, enabled: true, packType: 'tier3_pack', bonuses: {rare: 1}},
+    {level: 25, enabled: true, packType: 'explorer_pack', bonuses: {epic: .5}},
+    {level: 30, enabled: true, packType: 'tier4_pack', bonuses: {legendary: .3}},
+  ],
   attemptTtlMs: 86400000, minCompletionMs: 3000, maxMoves: 20000,
 };
 export const difficulties = {easy: {grid: 3, points: 1, seconds: 900, moves: 700}, medium: {grid: 4, points: 2, seconds: 1200, moves: 1000}, hard: {grid: 5, points: 3, seconds: 1800, moves: 2000}, veryHard: {grid: 6, points: 4, seconds: 2400, moves: 3000}};
@@ -30,6 +43,7 @@ export const blocksLimits = {
   veryHard: {targetLines: 40, twoScore: 15000, threeScore: 23000, twoSeconds: 1380, threeSeconds: 1020},
 };
 export const packTypes = ['world_pack', 'explorer_pack', 'tier3_pack', 'tier4_pack'];
+export const dailyCountryPool = ['brazil', 'japan', 'united_states', 'egypt'];
 export function validateConfig(c) {
   const integer = (n, low, high) => Number.isInteger(n) && n >= low && n <= high;
   if (!integer(c.version, 1, 100000) || !integer(c.levelCap, 2, 100) || !integer(c.xpBase, 1, 100000) || !integer(c.xpGrowth, 1, 100000) || !(c.xpPower >= 1 && c.xpPower <= 3) ||
@@ -38,12 +52,13 @@ export function validateConfig(c) {
     !integer(c.interstitialEvery, 0, 100) || !integer(c.resetHourUtc, 0, 23) || c.requiredCountries !== 4 ||
     !Array.isArray(c.thresholds) || c.thresholds.length !== 3 || !c.thresholds.every((n,i,a) => n > 1 && n <= 3 && (i === 0 || n > a[i-1])) ||
     Object.keys(c.dailyPoints ?? {}).join(',') !== 'easy,medium,hard,veryHard' || !Object.values(c.dailyPoints).every(n => integer(n, 1, 100)) ||
-    !Array.isArray(c.dailyRewardMilestones) || c.dailyRewardMilestones.join(',') !== '40,60,70,80' ||
+    !Array.isArray(c.dailyRewardMilestones) || c.dailyRewardMilestones.join(',') !== '40,60,70,80,100' ||
     c.starDustMaximum !== 100 ||
     !integer(c.worldCoin?.rewardedAdAmount, 1, 100) ||
     !integer(c.worldCoin?.dailyAdLimit, 1, 100) ||
-    !c.packOdds || Array.isArray(c.packOdds) || Object.keys(c.packOdds).join(',') !== '0,1,2,3' || !Object.values(c.packOdds).every(row => Array.isArray(row) && row.length === 4 && row.every(n => Number.isFinite(n) && n >= 0) && Math.abs(row.reduce((a,b)=>a+b,0)-100)<0.001) ||
-    !Array.isArray(c.milestones) || c.milestones.length > 100 || !c.milestones.every(m => integer(m.level,2,c.levelCap) && typeof m.enabled === 'boolean' && (!m.enabled || packTypes.includes(m.packType))) ||
+    !c.packOdds || Array.isArray(c.packOdds) || Object.keys(c.packOdds).join(',') !== '0,1,2,3,4' || !Object.values(c.packOdds).every(row => Array.isArray(row) && row.length === 4 && row.every(n => Number.isFinite(n) && n >= 0) && Math.abs(row.reduce((a,b)=>a+b,0)-100)<0.001) ||
+    !Array.isArray(c.weeklyRewards) || c.weeklyRewards.length !== 4 || !c.weeklyRewards.every((r,i,a) => integer(r.points,1,700) && packTypes.includes(r.packType) && (i === 0 || r.points > a[i-1].points)) || c.weeklyRewards[0].points !== 300 || c.weeklyRewards.at(-1).points !== 700 ||
+    !Array.isArray(c.milestones) || c.milestones.length > 100 || !c.milestones.every(m => integer(m.level,2,c.levelCap) && typeof m.enabled === 'boolean' && (!m.enabled || packTypes.includes(m.packType)) && Object.entries(m.bonuses ?? {}).every(([rarity,value]) => ['rare','epic','legendary'].includes(rarity) && Number.isFinite(value) && value >= 0 && value <= 20)) ||
     !integer(c.attemptTtlMs, 60000, 172800000) || !integer(c.minCompletionMs, 1000, 60000) || !integer(c.maxMoves, 100, 20000)) throw new Error('Invalid economy configuration');
   return c;
 }
@@ -55,6 +70,23 @@ export function levelFor(xp, c = defaults) {
     floor += needed; level++;
   }
   return {level, totalXp: xp, currentXp: xp - floor, nextXp: level === c.levelCap ? null : needed};
+}
+export function levelBonuses(level, c = defaults) {
+  const bonuses={rare:0,epic:0,legendary:0};
+  for(const milestone of c.milestones) {
+    if(!milestone.enabled || milestone.level>level) continue;
+    for(const rarity of Object.keys(bonuses)) bonuses[rarity]+=milestone.bonuses?.[rarity]??0;
+  }
+  return bonuses;
+}
+export function boostedRarityWeights(weights, level, c = defaults) {
+  const result={...weights}, bonuses=levelBonuses(level,c);
+  const requested=Object.entries(bonuses).reduce((sum,[rarity,value])=>result[rarity] == null ? sum : sum+value,0);
+  const applied=Math.min(result.common??0,requested);
+  if(requested<=0 || applied<=0) return result;
+  result.common-=applied;
+  for(const [rarity,value] of Object.entries(bonuses)) if(result[rarity] != null) result[rarity]+=value*(applied/requested);
+  return result;
 }
 // A fixed UTC boundary (03:00 by default) has no daylight-saving ambiguity.
 export function dailyCycle(now, c = defaults) {
@@ -80,13 +112,17 @@ export function normalizeWorldCoinEconomy(user, cycleId, c = defaults) {
     },
   };
 }
-// Weekly Star Dust cycles start on Sunday at local midnight (03:00 UTC by default).
+// Weekly exploration runs from Monday 00:00 through Sunday 13:00 in the
+// configured local timezone (03:00 UTC offset for America/Sao_Paulo).
 export function weeklyCycle(now, c = defaults) {
   const offset = c.resetHourUtc * 3600000;
   const local = new Date(now - offset);
   const localMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
-  const start = localMidnight - local.getUTCDay() * 86400000 + offset;
-  return {id: new Date(start - offset).toISOString().slice(0,10), resetsAt: start + 7 * 86400000};
+  const daysSinceMonday=(local.getUTCDay()+6)%7;
+  const start=localMidnight-daysSinceMonday*86400000+offset;
+  const endsAt=start+6*86400000+13*3600000;
+  const nextStartsAt=start+7*86400000;
+  return {id:new Date(start-offset).toISOString().slice(0,10),start,endsAt,nextStartsAt,resetsAt:now<endsAt?endsAt:nextStartsAt,active:now>=start&&now<endsAt};
 }
 export function regenerate(user, now, c = defaults) {
   let lives = Math.min(c.lives.maximum, user.lives);

@@ -72,6 +72,7 @@ class FakeOnline extends OnlineGameService {
     weeklyStars = {
       'id': '2026-09-13',
       'totalStars': 8,
+      'totalPoints': 80,
       'stagesCompleted': 3,
       'stages': {'sliding:japan:japan_01': 3},
     };
@@ -79,7 +80,7 @@ class FakeOnline extends OnlineGameService {
     resetsAt = 30000000;
   }
   bool unavailable = false, duplicate = false;
-  int debugPacksGranted = 0;
+  int debugPacksGranted = 0, dailyClaims = 0;
   Object? initializationError;
   @override
   Future<void> initialize() async {
@@ -93,6 +94,13 @@ class FakeOnline extends OnlineGameService {
 
   @override
   Future<void> sync() async {}
+  @override
+  Future<String> claim(String dailyId) async {
+    dailyClaims++;
+    daily['claimed'] = true;
+    return 'world_pack';
+  }
+
   @override
   Future<void> createProfile(String nickname, String avatar) async {
     if (duplicate) {
@@ -179,6 +187,171 @@ void main() {
       projectedTier({'a': 'hard', 'b': 'hard', 'c': 'hard', 'd': 'hard'}, {}),
       4,
     );
+    expect(
+      projectedTier({
+        'a': 'veryHard',
+        'b': 'veryHard',
+        'c': 'veryHard',
+        'd': 'veryHard',
+      }, {}),
+      5,
+    );
+  });
+  testWidgets('daily reward milestones follow the same 0 to 100 scale', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final online = FakeOnline()..daily['bestScore'] = 50;
+    final c = controller(online);
+    await tester.pumpWidget(host(c, const DailyExplorationScreen()));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('daily_reward_progress_bar')),
+      300,
+    );
+
+    final progressFinder = find.byKey(const Key('daily_reward_progress_bar'));
+    final progress = tester.widget<LinearProgressIndicator>(progressFinder);
+    final barRect = tester.getRect(progressFinder);
+    final forty = tester.getCenter(
+      find.byKey(const Key('daily_progress_milestone_40')),
+    );
+    final sixty = tester.getCenter(
+      find.byKey(const Key('daily_progress_milestone_60')),
+    );
+
+    expect(progress.value, closeTo(.5, .001));
+    expect((forty.dx - barRect.left) / barRect.width, closeTo(.4, .01));
+    expect((sixty.dx - barRect.left) / barRect.width, closeTo(.6, .01));
+    expect(forty.dx, lessThan(barRect.left + barRect.width * .5));
+    expect(sixty.dx, greaterThan(barRect.left + barRect.width * .5));
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+  testWidgets('daily exploration uses compact cards and a large gift claim', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final online = FakeOnline();
+    online.daily['countries'] = {
+      for (final id in const ['brazil', 'japan', 'united_states', 'egypt'])
+        id: {'completed': true, 'bestDifficulty': 'veryHard', 'bestPoints': 25},
+    };
+    online.daily['bestScore'] = 100;
+    final c = controller(online);
+    await tester.pumpWidget(host(c, const DailyExplorationScreen()));
+    await tester.pumpAndSettle();
+
+    final objective = tester.widget<Text>(
+      find.text('Complete uma fase em 4 países diferentes.'),
+    );
+    final countryRect = tester.getRect(
+      find.byKey(const Key('daily_country_brazil')),
+    );
+    expect(objective.maxLines, 1);
+    expect(countryRect.width / countryRect.height, closeTo(1, .02));
+    expect(find.text('Pontuação da Exploração'), findsNothing);
+    expect(find.text('100 / 100'), findsOneWidget);
+    expect(find.text('2%'), findsOneWidget);
+
+    expect(find.byKey(const Key('daily_exploration_tab')), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('daily_exploration_tab')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('daily_claim_button')),
+      300,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('daily_claim_button'))).height,
+      greaterThanOrEqualTo(74),
+    );
+    expect(find.byKey(const Key('daily_claim_gift')), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Máximo'), 300);
+    expect(
+      tester.getTopLeft(find.text('Máximo')).dy,
+      greaterThan(
+        tester.getTopLeft(find.byKey(const Key('daily_claim_button'))).dy,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+  testWidgets('daily claim confirms below 100 and skips confirmation at 100', (
+    tester,
+  ) async {
+    final online = FakeOnline();
+    online.daily['countries'] = {
+      'brazil': 'hard',
+      'japan': 'easy',
+      'united_states': 'easy',
+      'egypt': 'easy',
+    };
+    online.daily['bestScore'] = 50;
+    final c = controller(online);
+    await tester.pumpWidget(host(c, const DailyExplorationScreen()));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('daily_claim_button')),
+      300,
+    );
+    await tester.tap(find.byKey(const Key('daily_claim_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('daily_claim_confirmation')), findsOneWidget);
+    expect(
+      find.text(
+        'Tem certeza que deseja coletar o seu prêmio agora? Você pode melhorar suas chances acumulando mais pontos.',
+      ),
+      findsOneWidget,
+    );
+    expect(online.dailyClaims, 0);
+    await tester.tap(find.text('CONTINUAR ACUMULANDO'));
+    await tester.pumpAndSettle();
+
+    online.daily['bestScore'] = 100;
+    online.daily['claimed'] = false;
+    await c.refreshOnline();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('daily_claim_button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('daily_claim_confirmation')), findsNothing);
+    expect(online.dailyClaims, 1);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+  testWidgets('weekly packages unlock only after Sunday at 13h', (
+    tester,
+  ) async {
+    final online = FakeOnline();
+    online.weeklyStars['totalPoints'] = 300;
+    final c = controller(online);
+    await tester.pumpWidget(host(c, const DailyExplorationScreen()));
+    await tester.tap(find.byKey(const Key('weekly_exploration_tab')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Os pacotes só podem ser resgatados domingo após as 13h.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('weekly_claim_button')), findsNothing);
+
+    online.weeklyActive = false;
+    await c.refreshOnline();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('weekly_claim_button')), findsOneWidget);
+    expect(find.text('RESGATAR PACOTES'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
   });
   test('online accounts reject all local debug grants', () async {
     final c = controller(FakeOnline());
@@ -256,7 +429,21 @@ void main() {
     expect(find.byType(PlayerPanel), findsOneWidget);
     await tester.pumpWidget(host(c, const DailyExplorationScreen()));
     await tester.pumpAndSettle();
-    expect(find.text('45 / 80'), findsOneWidget);
+    expect(find.text('Exploração diária'), findsOneWidget);
+    expect(find.text('Exploração semanal'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('weekly_exploration_tab')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('weekly_score')), findsOneWidget);
+    expect(find.text('80 / 700 pontos'), findsOneWidget);
+    expect(find.byKey(const Key('weekly_reward_300')), findsOneWidget);
+    expect(
+      find.byKey(const Key('weekly_claim_schedule_notice')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('daily_exploration_tab')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('daily_score')), 220);
+    expect(find.text('45 / 100'), findsOneWidget);
     expect(find.byKey(const Key('daily_country_brazil')), findsOneWidget);
     expect(
       find.byKey(const Key('daily_country_united_states')),
@@ -279,6 +466,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Puzzles concluídos'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(host(c, const PlayerLevelBar()));
+    await tester.tap(find.byKey(const Key('level_progress_rewards_button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Marcos de nível'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('level_reward_30')),
+      250,
+    );
+    expect(find.byKey(const Key('level_reward_30')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     c.dispose();
   });

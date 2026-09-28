@@ -4,7 +4,11 @@ import '../../core/utils/card_labels.dart';
 import '../../data/cards_data.dart';
 import '../../models/collectible_card.dart';
 import 'card_artwork.dart';
+import 'common_card_frame.dart';
 import 'collectible_card_frame.dart';
+import 'epic_card_frame.dart';
+import 'legendary_card_frame.dart';
+import 'rare_card_frame.dart';
 
 enum AlbumCardState { notOwned, inCollection, pasted }
 
@@ -65,6 +69,74 @@ class CollectibleCardView extends StatelessWidget {
     final locked = state == AlbumCardState.notOwned;
     final premium =
         card.rarity == CardRarity.epic || card.rarity == CardRarity.legendary;
+
+    if (card.rarity == CardRarity.legendary) {
+      return LegendaryCardFrame(
+        artwork: CardArtwork(
+          card: card,
+          locked: locked,
+          borderRadius: BorderRadius.zero,
+        ),
+        countryFlag: country?.flag ?? '🌎',
+        countryName: country?.name ?? card.countryId,
+        cardName: card.localizedName ?? card.name,
+        categoryLabel: categoryLabel(card.category),
+        description: card.description,
+        catalogNumber: card.catalogNumber,
+        locked: locked,
+      );
+    }
+
+    if (card.rarity == CardRarity.epic) {
+      return EpicCardFrame(
+        artwork: CardArtwork(
+          card: card,
+          locked: locked,
+          borderRadius: BorderRadius.zero,
+        ),
+        countryFlag: country?.flag ?? '🌎',
+        countryName: country?.name ?? card.countryId,
+        cardName: card.localizedName ?? card.name,
+        categoryLabel: categoryLabel(card.category),
+        description: card.description,
+        catalogNumber: card.catalogNumber,
+        locked: locked,
+      );
+    }
+
+    if (card.rarity == CardRarity.rare) {
+      return RareCardFrame(
+        artwork: CardArtwork(
+          card: card,
+          locked: locked,
+          borderRadius: BorderRadius.zero,
+        ),
+        countryFlag: country?.flag ?? '🌎',
+        countryName: country?.name ?? card.countryId,
+        cardName: card.localizedName ?? card.name,
+        categoryLabel: categoryLabel(card.category),
+        description: card.description,
+        catalogNumber: card.catalogNumber,
+        locked: locked,
+      );
+    }
+
+    if (card.rarity == CardRarity.common) {
+      return CommonCardFrame(
+        artwork: CardArtwork(
+          card: card,
+          locked: locked,
+          borderRadius: BorderRadius.zero,
+        ),
+        countryFlag: country?.flag ?? '🌎',
+        countryName: country?.name ?? card.countryId,
+        cardName: card.localizedName ?? card.name,
+        categoryLabel: categoryLabel(card.category),
+        description: card.description,
+        catalogNumber: card.catalogNumber,
+        locked: locked,
+      );
+    }
 
     return CollectibleCardFrame(
       artwork: CardArtwork(
